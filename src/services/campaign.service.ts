@@ -78,7 +78,36 @@ export const CampaignService = {
     return list;
   },
 
-  getCampaignById: async (id: string): Promise<Campaign | undefined> => {
+  /**
+   * Fetches a campaign by ID for public views.
+   * Strictly verifies that the campaign has a public lifecycle status (FUNDING, PROMOTING, COMPLETED, etc.).
+   * Private campaigns (DRAFT, UNDER_REVIEW, CHANGES_REQUESTED, APPROVED) return undefined.
+   */
+  getPublicCampaignById: async (id: string): Promise<Campaign | undefined> => {
+    const userCampaigns = useMyCampaignsStore.getState().campaigns;
+    const foundInUser = userCampaigns.find((c) => c.id === id);
+    if (foundInUser) {
+      if (!isPublicCampaign(foundInUser)) {
+        return undefined;
+      }
+      return applyFundingAdjustments(foundInUser);
+    }
+
+    const foundInMock = MOCK_CAMPAIGNS.find((c) => c.id === id);
+    if (foundInMock) {
+      if (!isPublicCampaign(foundInMock)) {
+        return undefined;
+      }
+      return applyFundingAdjustments(foundInMock);
+    }
+
+    return undefined;
+  },
+
+  /**
+   * Fetches a campaign by ID for the creator who owns it (accessible regardless of public status).
+   */
+  getCreatorCampaignById: async (id: string): Promise<Campaign | undefined> => {
     const userCampaigns = useMyCampaignsStore.getState().campaigns;
     const foundInUser = userCampaigns.find((c) => c.id === id);
     if (foundInUser) {
@@ -91,6 +120,26 @@ export const CampaignService = {
     }
 
     return undefined;
+  },
+
+  /**
+   * Fetches a candidate campaign by ID for reviewer inspection.
+   */
+  getReviewerCampaignById: async (id: string): Promise<Campaign | undefined> => {
+    const userCampaigns = useMyCampaignsStore.getState().campaigns;
+    const foundInUser = userCampaigns.find((c) => c.id === id);
+    if (foundInUser) {
+      return applyFundingAdjustments(foundInUser);
+    }
+
+    return undefined;
+  },
+
+  /**
+   * Default public detail lookup.
+   */
+  getCampaignById: async (id: string): Promise<Campaign | undefined> => {
+    return CampaignService.getPublicCampaignById(id);
   },
 
   getFeaturedCampaigns: async (): Promise<Campaign[]> => {

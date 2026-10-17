@@ -240,20 +240,15 @@ export default function CampaignDetailScreen() {
                 <Text style={styles.statusNoticeTitle}>Promotion Active</Text>
               </View>
               <Text style={styles.statusNoticeBody}>
-                This campaign is actively being promoted across verified ad channels and digital networks.
+                This campaign is actively being promoted across configured distribution channels.
               </Text>
               <AppButton
-                title="View Distribution Channels"
-                onPress={() => {
-                  Alert.alert(
-                    'Active Distribution',
-                    `Delivering messages across: ${campaign.distributionChannels.join(', ')}.`
-                  );
-                }}
+                title="View Distribution Progress"
+                onPress={() => router.push(`/report/${campaign.id}`)}
                 variant="outline"
                 size="md"
                 fullWidth
-                icon={<Ionicons name="megaphone-outline" size={16} color={Palette.navy950} />}
+                icon={<Ionicons name="analytics-outline" size={16} color={Palette.navy950} />}
                 style={styles.statusCta}
               />
             </View>
@@ -264,7 +259,7 @@ export default function CampaignDetailScreen() {
                 <Text style={styles.statusNoticeTitle}>Campaign Completed</Text>
               </View>
               <Text style={styles.statusNoticeBody}>
-                The distribution run has concluded with verified delivery metrics and impressions.
+                The distribution run has concluded with prototype delivery metrics and impression analytics.
               </Text>
               <AppButton
                 title="View Final Report"
@@ -315,8 +310,8 @@ export default function CampaignDetailScreen() {
                 </Text>
               </View>
               <Text style={styles.statusNoticeBody}>
-                {CAMPAIGN_STATUS_CONFIG[campaign.status]?.description ||
-                  'This campaign is undergoing verification and is not yet accepting public backing.'}
+                {CAMPAIGN_STATUS_CONFIG[campaign.status]?.publicDescription ||
+                  'This campaign is undergoing review and is not yet accepting public backing.'}
               </Text>
             </View>
           )}

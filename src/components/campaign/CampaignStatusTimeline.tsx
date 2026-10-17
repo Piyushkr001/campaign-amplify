@@ -6,72 +6,13 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 
-interface TimelineStep {
+interface TimelineStepItem {
   key: string;
   label: string;
   description: string;
+  state: 'completed' | 'current' | 'pending' | 'warning' | 'error' | 'neutral';
+  date?: string | null;
 }
-
-const HAPPY_PATH_STEPS: TimelineStep[] = [
-  {
-    key: 'DRAFT',
-    label: 'Draft Created',
-    description: 'Campaign message, ad creative, and sources structured.',
-  },
-  {
-    key: 'SUBMITTED_FOR_REVIEW',
-    label: 'Submitted for Review',
-    description: 'Campaign received in the editorial verification queue.',
-  },
-  {
-    key: 'UNDER_REVIEW',
-    label: 'Under Review',
-    description: 'Verification team inspecting message claims and sources.',
-  },
-  {
-    key: 'APPROVED',
-    label: 'Approved',
-    description: 'Passed editorial guidelines and verified for policy compliance.',
-  },
-  {
-    key: 'FUNDING',
-    label: 'Available for Funding',
-    description: 'Publicly discoverable; backers contribute toward advertising budget.',
-  },
-  {
-    key: 'DISTRIBUTION_PREPARATION',
-    label: 'Distribution Prep',
-    description: 'Ad network accounts and targeted placements configured.',
-  },
-  {
-    key: 'PROMOTING',
-    label: 'Live Promotion',
-    description: 'Advertising campaigns actively distributing to selected audiences.',
-  },
-  {
-    key: 'COMPLETED',
-    label: 'Distribution Completed',
-    description: 'Delivery cycle complete with validated impression metrics.',
-  },
-];
-
-const STATUS_PROGRESSION: Record<CampaignStatus, number> = {
-  DRAFT: 0,
-  SUBMITTED_FOR_REVIEW: 1,
-  UNDER_REVIEW: 2,
-  CHANGES_REQUESTED: 2, // Exception at review
-  APPROVED: 3,
-  FUNDING: 4,
-  FUNDING_GOAL_REACHED: 4,
-  FUNDING_ENDED: 4,
-  DISTRIBUTION_PREPARATION: 5,
-  PROMOTING: 6,
-  COMPLETED: 7,
-  REJECTED: 2, // Exception at review
-  CANCELLED: -1,
-  REFUND_PENDING: -1,
-  FAILED: -1,
-};
 
 interface CampaignStatusTimelineProps {
   currentStatus: CampaignStatus;
@@ -86,14 +27,8 @@ export function CampaignStatusTimeline({
   reviewFeedback,
   rejectionReason,
 }: CampaignStatusTimelineProps) {
-  const currentStepIndex = STATUS_PROGRESSION[currentStatus] ?? 0;
-  const isChangesRequested = currentStatus === 'CHANGES_REQUESTED';
-  const isRejected = currentStatus === 'REJECTED';
-  const isCancelled = currentStatus === 'CANCELLED';
-  const isFailed = currentStatus === 'FAILED';
-
   // Helper to find recorded date for a status in history
-  const getHistoryDate = (statusKey: string) => {
+  const getHistoryDate = (statusKey: string): string | null => {
     const entry = statusHistory.find(
       (h) => h.toStatus === statusKey || (statusKey === 'DRAFT' && h.toStatus === 'DRAFT')
     );
@@ -103,6 +38,230 @@ export function CampaignStatusTimeline({
       day: 'numeric',
     });
   };
+
+  const isChangesRequested = currentStatus === 'CHANGES_REQUESTED';
+  const isRejected = currentStatus === 'REJECTED';
+  const isCancelled = currentStatus === 'CANCELLED';
+  const isFailed = currentStatus === 'FAILED';
+
+  // Build the dynamic steps array tailored to currentStatus
+  const getSteps = (): TimelineStepItem[] => {
+    if (isChangesRequested) {
+      return [
+        {
+          key: 'DRAFT',
+          label: 'Draft Created',
+          description: 'Campaign message, ad creative, and sources structured.',
+          state: 'completed',
+          date: getHistoryDate('DRAFT'),
+        },
+        {
+          key: 'SUBMITTED_FOR_REVIEW',
+          label: 'Submitted for Review',
+          description: 'Campaign received in the editorial verification queue.',
+          state: 'completed',
+          date: getHistoryDate('SUBMITTED_FOR_REVIEW'),
+        },
+        {
+          key: 'UNDER_REVIEW',
+          label: 'Review Started',
+          description: 'Verification team inspected message claims and sources.',
+          state: 'completed',
+          date: getHistoryDate('UNDER_REVIEW'),
+        },
+        {
+          key: 'CHANGES_REQUESTED',
+          label: 'Changes Requested',
+          description: reviewFeedback || 'Reviewer requested adjustments before campaign approval.',
+          state: 'warning',
+          date: getHistoryDate('CHANGES_REQUESTED'),
+        },
+        {
+          key: 'RESUBMISSION',
+          label: 'Resubmission for Review',
+          description: 'Creator updates claims or citations and submits revisions.',
+          state: 'pending',
+          date: null,
+        },
+        {
+          key: 'APPROVED',
+          label: 'Editorial Approval',
+          description: 'Verification team confirms compliance with advertising guidelines.',
+          state: 'pending',
+          date: null,
+        },
+        {
+          key: 'FUNDING',
+          label: 'Available for Funding',
+          description: 'Campaign published publicly for community backer contributions.',
+          state: 'pending',
+          date: null,
+        },
+      ];
+    }
+
+    if (isRejected) {
+      return [
+        {
+          key: 'DRAFT',
+          label: 'Draft Created',
+          description: 'Campaign message and sources initialized.',
+          state: 'completed',
+          date: getHistoryDate('DRAFT'),
+        },
+        {
+          key: 'SUBMITTED_FOR_REVIEW',
+          label: 'Submitted for Review',
+          description: 'Campaign received in editorial verification queue.',
+          state: 'completed',
+          date: getHistoryDate('SUBMITTED_FOR_REVIEW'),
+        },
+        {
+          key: 'UNDER_REVIEW',
+          label: 'Review Started',
+          description: 'Verification team vetted claims against platform policy.',
+          state: 'completed',
+          date: getHistoryDate('UNDER_REVIEW'),
+        },
+        {
+          key: 'REJECTED',
+          label: 'Campaign Not Approved',
+          description: rejectionReason || 'Does not meet platform neutrality or sourcing standards.',
+          state: 'error',
+          date: getHistoryDate('REJECTED'),
+        },
+      ];
+    }
+
+    if (isCancelled) {
+      return [
+        {
+          key: 'DRAFT',
+          label: 'Draft Created',
+          description: 'Campaign message initialized.',
+          state: 'completed',
+          date: getHistoryDate('DRAFT'),
+        },
+        {
+          key: 'CANCELLED',
+          label: 'Campaign Cancelled',
+          description: 'Campaign was closed or archived by creator.',
+          state: 'neutral',
+          date: getHistoryDate('CANCELLED'),
+        },
+      ];
+    }
+
+    if (isFailed) {
+      return [
+        {
+          key: 'DRAFT',
+          label: 'Draft Created',
+          description: 'Campaign structured.',
+          state: 'completed',
+          date: getHistoryDate('DRAFT'),
+        },
+        {
+          key: 'SUBMITTED_FOR_REVIEW',
+          label: 'Submitted for Review',
+          description: 'Campaign submitted for review.',
+          state: 'completed',
+          date: getHistoryDate('SUBMITTED_FOR_REVIEW'),
+        },
+        {
+          key: 'FUNDING',
+          label: 'Funding',
+          description: 'Community contributions sponsored message amplification.',
+          state: 'completed',
+          date: getHistoryDate('FUNDING'),
+        },
+        {
+          key: 'FAILED',
+          label: 'Distribution Interrupted',
+          description: 'Targeted ad delivery encountered delivery failure.',
+          state: 'error',
+          date: getHistoryDate('FAILED'),
+        },
+      ];
+    }
+
+    // Standard progression for happy path
+    const HAPPY_STEPS = [
+      {
+        key: 'DRAFT',
+        label: 'Draft Created',
+        description: 'Campaign message, ad creative, and sources structured.',
+      },
+      {
+        key: 'SUBMITTED_FOR_REVIEW',
+        label: 'Submitted for Review',
+        description: 'Campaign received in the editorial review queue.',
+      },
+      {
+        key: 'UNDER_REVIEW',
+        label: 'Under Review',
+        description: 'Review team inspecting message claims and citations.',
+      },
+      {
+        key: 'APPROVED',
+        label: 'Approved',
+        description: 'Passed editorial guidelines and approved for platform compliance.',
+      },
+      {
+        key: 'FUNDING',
+        label: 'Available for Funding',
+        description: 'Publicly discoverable; backers contribute toward advertising budget.',
+      },
+      {
+        key: 'DISTRIBUTION_PREPARATION',
+        label: 'Distribution Prep',
+        description: 'Ad accounts and targeted placements configured.',
+      },
+      {
+        key: 'PROMOTING',
+        label: 'Live Promotion',
+        description: 'Advertising campaigns actively distributing to selected audiences.',
+      },
+      {
+        key: 'COMPLETED',
+        label: 'Distribution Completed',
+        description: 'Delivery cycle complete with prototype distribution report.',
+      },
+    ];
+
+    const PROGRESSION_INDEX: Record<string, number> = {
+      DRAFT: 0,
+      SUBMITTED_FOR_REVIEW: 1,
+      UNDER_REVIEW: 2,
+      APPROVED: 3,
+      FUNDING: 4,
+      FUNDING_GOAL_REACHED: 4,
+      FUNDING_ENDED: 4,
+      DISTRIBUTION_PREPARATION: 5,
+      PROMOTING: 6,
+      COMPLETED: 7,
+    };
+
+    const currentIdx = PROGRESSION_INDEX[currentStatus] ?? 0;
+
+    return HAPPY_STEPS.map((step, idx) => {
+      let state: TimelineStepItem['state'] = 'pending';
+      if (idx < currentIdx) {
+        state = 'completed';
+      } else if (idx === currentIdx) {
+        state = 'current';
+      }
+      return {
+        key: step.key,
+        label: step.label,
+        description: step.description,
+        state,
+        date: getHistoryDate(step.key),
+      };
+    });
+  };
+
+  const steps = getSteps();
 
   return (
     <View style={styles.container}>
@@ -162,21 +321,24 @@ export function CampaignStatusTimeline({
 
       {/* Steps List */}
       <View style={styles.stepsList}>
-        {HAPPY_PATH_STEPS.map((step, idx) => {
-          const isCompleted = idx < currentStepIndex && !isRejected;
-          const isCurrent = idx === currentStepIndex && !isChangesRequested && !isRejected;
-          const isPending = idx > currentStepIndex || isRejected || isChangesRequested;
+        {steps.map((step, idx) => {
+          const isCompleted = step.state === 'completed';
+          const isCurrent = step.state === 'current';
+          const isWarning = step.state === 'warning';
+          const isError = step.state === 'error';
+          const isNeutral = step.state === 'neutral';
+          const isPending = step.state === 'pending';
 
-          const dateLabel = getHistoryDate(step.key);
+          const isLineActive = isCompleted;
 
           return (
             <View key={step.key} style={styles.stepRow}>
               {/* Vertical line connector */}
-              {idx < HAPPY_PATH_STEPS.length - 1 && (
+              {idx < steps.length - 1 && (
                 <View
                   style={[
                     styles.verticalLine,
-                    isCompleted ? styles.lineCompleted : styles.linePending,
+                    isLineActive ? styles.lineCompleted : styles.linePending,
                   ]}
                 />
               )}
@@ -187,12 +349,21 @@ export function CampaignStatusTimeline({
                   styles.iconCircle,
                   isCompleted && styles.iconCompleted,
                   isCurrent && styles.iconCurrent,
+                  isWarning && styles.iconWarning,
+                  isError && styles.iconError,
+                  isNeutral && styles.iconNeutral,
                   isPending && styles.iconPending,
                 ]}>
                 {isCompleted ? (
                   <Ionicons name="checkmark" size={12} color={Palette.pureWhite} />
                 ) : isCurrent ? (
                   <View style={styles.currentDot} />
+                ) : isWarning ? (
+                  <Ionicons name="alert" size={12} color={Palette.pureWhite} />
+                ) : isError ? (
+                  <Ionicons name="close" size={12} color={Palette.pureWhite} />
+                ) : isNeutral ? (
+                  <Ionicons name="remove" size={12} color={Palette.neutral600} />
                 ) : (
                   <View style={styles.pendingDot} />
                 )}
@@ -206,16 +377,20 @@ export function CampaignStatusTimeline({
                       styles.stepLabel,
                       isCompleted && styles.labelCompleted,
                       isCurrent && styles.labelCurrent,
+                      isWarning && styles.labelWarning,
+                      isError && styles.labelError,
                       isPending && styles.labelPending,
                     ]}>
                     {step.label}
                   </Text>
-                  {dateLabel ? <Text style={styles.stepDate}>{dateLabel}</Text> : null}
+                  {step.date ? <Text style={styles.stepDate}>{step.date}</Text> : null}
                 </View>
                 <Text
                   style={[
                     styles.stepDesc,
                     isCurrent && styles.descCurrent,
+                    isWarning && styles.descWarning,
+                    isError && styles.descError,
                     isPending && styles.descPending,
                   ]}>
                   {step.description}
@@ -348,6 +523,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Palette.primary600,
   },
+  iconWarning: {
+    backgroundColor: Palette.amber600,
+  },
+  iconError: {
+    backgroundColor: Palette.error600,
+  },
+  iconNeutral: {
+    backgroundColor: Palette.neutral200,
+  },
   iconPending: {
     backgroundColor: Palette.neutral100,
     borderWidth: 1,
@@ -385,6 +569,14 @@ const styles = StyleSheet.create({
     color: Palette.primary700,
     fontWeight: '700',
   },
+  labelWarning: {
+    color: Palette.amber900,
+    fontWeight: '700',
+  },
+  labelError: {
+    color: Palette.error700,
+    fontWeight: '700',
+  },
   labelPending: {
     color: Palette.neutral400,
   },
@@ -401,6 +593,12 @@ const styles = StyleSheet.create({
   },
   descCurrent: {
     color: Palette.navy900,
+  },
+  descWarning: {
+    color: Palette.amber900,
+  },
+  descError: {
+    color: Palette.error700,
   },
   descPending: {
     color: Palette.neutral400,

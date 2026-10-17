@@ -21,6 +21,7 @@ import { AppInput } from '@/components/ui/AppInput';
 import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator';
 import { CampaignSubmissionPreviewModal } from '@/components/create/CampaignSubmissionPreviewModal';
 import { AdCreativePreview } from '@/components/create/AdCreativePreview';
+import { RevisionFeedbackBanner } from '@/components/create/RevisionFeedbackBanner';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { Config } from '@/constants/config';
@@ -48,7 +49,11 @@ export default function CreateSubmitScreen() {
     lastSavedAt,
     isSaving,
   } = useCampaignDraftStore();
-  const { addFromDraft } = useMyCampaignsStore();
+  const { addFromDraft, updateFromDraft, transitionCampaign, getCampaignById } =
+    useMyCampaignsStore();
+
+  const isRevision = Boolean(draft.id);
+  const existingCampaign = draft.id ? getCampaignById(draft.id) : undefined;
 
   const [fundingGoal, setFundingGoal] = useState<number>(draft.fundingGoal || 2500);
   const [customGoalInput, setCustomGoalInput] = useState<string>(
@@ -202,22 +207,44 @@ export default function CreateSubmitScreen() {
     setIsSubmitting(true);
 
     try {
-      // 1. Create submitted campaign snapshot
-      const submittedCampaign = addFromDraft({
-        ...draft,
-        fundingGoal,
-      });
+      if (draft.id) {
+        // Revision flow: update existing campaign snapshot and transition to SUBMITTED_FOR_REVIEW
+        const updatedCampaign = updateFromDraft(draft.id, {
+          ...draft,
+          fundingGoal,
+        });
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        transitionCampaign(draft.id, 'SUBMITTED_FOR_REVIEW', {
+          actor: 'CREATOR',
+          note: 'Campaign revisions resubmitted by creator for editorial review.',
+        });
 
-      // 2. Clear active draft
-      resetDraft();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        resetDraft();
 
-      // 3. Navigate to success with campaign ID
-      router.replace({
-        pathname: '/create-campaign/success',
-        params: { id: submittedCampaign.id, title: submittedCampaign.title },
-      });
+        router.replace({
+          pathname: '/create-campaign/success',
+          params: {
+            id: draft.id,
+            title: updatedCampaign?.title || draft.title,
+            resubmitted: 'true',
+          },
+        });
+      } else {
+        // New campaign creation flow
+        const submittedCampaign = addFromDraft({
+          ...draft,
+          fundingGoal,
+        });
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        resetDraft();
+
+        router.replace({
+          pathname: '/create-campaign/success',
+          params: { id: submittedCampaign.id, title: submittedCampaign.title },
+        });
+      }
     } catch (err) {
       console.error('Submission error:', err);
       Alert.alert('Submission Error', 'Failed to submit campaign. Please try again.');
@@ -235,6 +262,14 @@ export default function CreateSubmitScreen() {
         isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
+
+      {/* Contextual Revision Feedback Banner */}
+      {isRevision && existingCampaign?.reviewFeedback ? (
+        <RevisionFeedbackBanner
+          feedback={existingCampaign.reviewFeedback}
+          campaignTitle={existingCampaign.title}
+        />
+      ) : null}
 
       {/* Header */}
       <View style={styles.header}>
@@ -488,7 +523,7 @@ export default function CreateSubmitScreen() {
 
         {/* Primary submit action */}
         <AppButton
-          title="Submit for Review"
+          title={isRevision ? 'Submit Requested Changes' : 'Submit for Review'}
           onPress={handleSubmit}
           variant="primary"
           size="lg"

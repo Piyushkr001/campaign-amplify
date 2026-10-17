@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CampaignDraft, CampaignSource } from '@/types/campaign';
+import { Campaign, CampaignDraft, CampaignSource } from '@/types/campaign';
 import { generateId } from '@/utils/id';
 
 export const INITIAL_CAMPAIGN_DRAFT: CampaignDraft = {
@@ -51,9 +51,12 @@ export interface CampaignDraftStore {
   removeSource: (id: string) => void;
   saveAsDraft: () => void;
   saveDraft: (data?: Partial<CampaignDraft>) => void;
+  loadCampaignIntoDraft: (campaign: Campaign, step?: 1 | 2 | 3 | 4 | 5) => void;
   resetDraft: () => void;
   setHasHydrated: (status: boolean) => void;
   hasDraft: () => boolean;
+  hasMeaningfulDraft: () => boolean;
+  isRevision: () => boolean;
 
   // Backward compatibility getters for screens
   title: string;
@@ -195,6 +198,57 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
         }
       },
 
+      /**
+       * Centralized action to populate the active draft with an existing campaign's data.
+       * Crucially sets `draft.id = campaign.id` so that revisions edit the same campaign record
+       * rather than fabricating a duplicate campaign.
+       */
+      loadCampaignIntoDraft: (campaign: Campaign, step: 1 | 2 | 3 | 4 | 5 = 2) => {
+        const now = new Date().toISOString();
+        const sources: CampaignSource[] = (campaign.supportingSources || []).map((s, idx) => ({
+          id: `src-${idx}-${generateId('item')}`,
+          title: s.title,
+          url: s.url,
+          publisher: s.publisher,
+        }));
+
+        set({
+          draft: {
+            id: campaign.id,
+            currentStep: step,
+            title: campaign.title,
+            category: campaign.category,
+            creatorName: campaign.creator,
+            summary: campaign.summary,
+            coverImage: campaign.coverImage,
+
+            storyHeadline: campaign.storyHeadline || campaign.storyDetails?.headline || '',
+            storyIntro: campaign.storyIntro || campaign.storyDetails?.intro || '',
+            storyContent: campaign.storyContent || campaign.storyDetails?.content || campaign.story || '',
+            sources,
+            storyImage: campaign.storyImage || campaign.storyDetails?.image,
+            storyImageCaption: campaign.storyImageCaption || campaign.storyDetails?.caption,
+            storyImageCredit: campaign.storyImageCredit || campaign.storyDetails?.credit,
+            suggestedAction: campaign.suggestedAction || '',
+
+            adImage: campaign.adImage || campaign.coverImage,
+            adHeadline: campaign.adHeadline || campaign.title,
+            adDescription: campaign.adDescription || campaign.summary,
+            adCTA: campaign.adCTA || 'Learn More',
+
+            locations: campaign.locations || ['India', 'Delhi NCR'],
+            interests: campaign.interests || ['Environment', 'Sustainability'],
+            channels: campaign.distributionChannels || campaign.channels || ['Meta', 'Google Display'],
+            audienceDescription: campaign.audienceDescription || '',
+            durationDays: campaign.durationDays || 14,
+            fundingGoal: campaign.goal,
+            lastSavedAt: now,
+          },
+          lastSavedAt: now,
+          isSaving: false,
+        });
+      },
+
       resetDraft: () => {
         set({
           draft: { ...INITIAL_CAMPAIGN_DRAFT },
@@ -208,12 +262,23 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
       },
 
       hasDraft: () => {
+        return get().hasMeaningfulDraft();
+      },
+
+      hasMeaningfulDraft: () => {
         const { draft } = get();
         return (
+          Boolean(draft.id) ||
           draft.title.trim().length > 0 ||
           draft.summary.trim().length > 0 ||
-          draft.storyContent.trim().length > 0
+          draft.storyContent.trim().length > 0 ||
+          Boolean(draft.coverImage) ||
+          draft.currentStep > 1
         );
+      },
+
+      isRevision: () => {
+        return Boolean(get().draft.id);
       },
     }),
     {

@@ -102,7 +102,7 @@ export default function ProfileScreen() {
           onPress: () =>
             handleInfoModal(
               'Help & FAQ',
-              'Q: Can I get a refund? A: If a campaign does not meet its funding goal or distribution is cancelled, funds are reversed. Contact support@campaignamplify.org for assistance.'
+              'Q: Can I get a refund? A: Refund handling is represented in the lifecycle model but is not processed by a real payment provider in this prototype.'
             ),
         },
         {
@@ -112,7 +112,7 @@ export default function ProfileScreen() {
           onPress: () =>
             handleInfoModal(
               'Privacy & Terms',
-              'We never store unencrypted payment credentials. Card numbers and CVVs are processed through secure sandbox endpoints. Contributor data is kept private.'
+              'This prototype does not persist card numbers, expiry dates, or CVVs. Payment fields are used only during local simulated checkout.'
             ),
         },
       ],

@@ -21,9 +21,10 @@ import { formatReachEstimate } from '@/utils/reach';
 
 export default function CreateSuccessScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; title?: string }>();
+  const params = useLocalSearchParams<{ id?: string; title?: string; resubmitted?: string }>();
   const { getCampaignById } = useMyCampaignsStore();
 
+  const isResubmission = params.resubmitted === 'true';
   const campaign = params.id ? getCampaignById(params.id) : undefined;
   const [showStatusModal, setShowStatusModal] = useState(false);
 
@@ -43,8 +44,14 @@ export default function CreateSuccessScreen() {
           <Ionicons name="checkmark-sharp" size={38} color={Palette.pureWhite} />
         </View>
 
-        <Text style={styles.title}>Campaign Submitted</Text>
-        <Text style={styles.subtitle}>Your campaign has been submitted for review.</Text>
+        <Text style={styles.title}>
+          {isResubmission ? 'Revisions Submitted' : 'Campaign Submitted'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {isResubmission
+            ? 'Your revised campaign has been returned to the editorial verification queue.'
+            : 'Your campaign has been submitted for review.'}
+        </Text>
 
         {/* Status Badge */}
         <View style={styles.statusBadge}>

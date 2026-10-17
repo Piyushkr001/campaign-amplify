@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -15,12 +15,13 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ReviewCampaignCard } from '@/components/reviewer/ReviewCampaignCard';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useState } from 'react';
 
 type ReviewQueueTab = 'PENDING' | 'APPROVED' | 'ALL';
 
 export default function ReviewerQueueScreen() {
   const router = useRouter();
-  const { campaigns } = useMyCampaignsStore();
+  const { campaigns, hasHydrated } = useMyCampaignsStore();
   const [activeTab, setActiveTab] = useState<ReviewQueueTab>('PENDING');
 
   // Filter campaigns based on tab
@@ -95,7 +96,12 @@ export default function ReviewerQueueScreen() {
       </View>
 
       {/* Campaigns Queue List */}
-      {currentList.length === 0 ? (
+      {!hasHydrated ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={styles.loadingText}>Loading review queue...</Text>
+        </View>
+      ) : currentList.length === 0 ? (
         <View style={styles.emptyWrap}>
           <EmptyState
             iconName="checkmark-done-circle-outline"
@@ -226,6 +232,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingBottom: Spacing.xl,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingBottom: Spacing.xxl,
+  },
+  loadingText: {
+    ...Typography.bodySmall,
+    color: Palette.neutral500,
   },
   listContent: {
     paddingBottom: Spacing.xxl * 2,

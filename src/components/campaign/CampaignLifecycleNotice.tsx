@@ -70,7 +70,7 @@ export function CampaignLifecycleNotice({ status, note }: CampaignLifecycleNotic
       <View style={styles.textContainer}>
         <Text style={[styles.title, { color: theme.textColor }]}>{config.label}</Text>
         <Text style={[styles.desc, { color: theme.textColor }]}>
-          {note || config.description}
+          {note || config.publicDescription || config.creatorDescription}
         </Text>
       </View>
     </View>

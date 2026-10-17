@@ -21,7 +21,9 @@ import { AppInput } from '@/components/ui/AppInput';
 import { useCampaign } from '@/hooks/useCampaigns';
 import { useContributionStore } from '@/store/contribution-store';
 import { useCampaignFundingStore } from '@/store/campaign-funding-store';
+import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { queryClient } from '@/services/query-client';
+import { campaignKeys } from '@/constants/query-keys';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 
@@ -178,8 +180,25 @@ export default function SimulatedPaymentScreen() {
         // Update campaign funding locally ONLY upon SUCCESS!
         useCampaignFundingStore.getState().addFunding(campaignId || '', contributionAmount);
 
+        // Check if campaign funding goal was reached
+        const currentRaised = campaign?.raised || 0;
+        const goal = campaign?.goal || 0;
+        const newRaised = currentRaised + contributionAmount;
+
+        if (campaign && campaign.status === 'FUNDING' && newRaised >= goal) {
+          useMyCampaignsStore
+            .getState()
+            .transitionCampaign(campaignId || '', 'FUNDING_GOAL_REACHED', {
+              actor: 'SYSTEM',
+              note: 'Campaign reached 100% of its amplification funding goal!',
+            });
+        }
+
         // Invalidate TanStack query cache so all screens reflect new funding
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+        if (campaignId) {
+          queryClient.invalidateQueries({ queryKey: campaignKeys.detail(campaignId) });
+        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 

@@ -135,7 +135,7 @@ export default function ActivityScreen() {
         campaignTitle: 'Financial Literacy for Early Careers',
         type: 'COMPLETED',
         title: 'Campaign Distribution Completed',
-        description: 'Successfully reached over 310,000 verified impressions among young career workers.',
+        description: 'Campaign completed with 310,000 demo measured impressions among young career workers.',
         date: '2026-10-12T09:15:00Z',
         badgeVariant: 'default',
         icon: 'checkmark-done-circle-outline',
@@ -257,7 +257,7 @@ export default function ActivityScreen() {
           <EmptyState
             iconName="receipt-outline"
             title="No backed campaigns yet"
-            description="When you back campaign amplification, your contributions and verified receipts will appear here."
+            description="When you back campaign amplification, your contributions and demo receipts will appear here."
             actionTitle="Explore Active Campaigns"
             onAction={() => router.push('/(tabs)/explore')}
             style={styles.emptyContainer}

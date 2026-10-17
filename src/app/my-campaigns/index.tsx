@@ -17,7 +17,9 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AppButton } from '@/components/ui/AppButton';
 import { CreatorCampaignCard } from '@/components/campaign/CreatorCampaignCard';
+import { DraftCampaignCard } from '@/components/campaign/DraftCampaignCard';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import {
   CREATOR_DASHBOARD_TABS,
   CREATOR_TAB_STATUS_MAPPING,
@@ -28,7 +30,11 @@ import { Campaign } from '@/types/campaign';
 export default function MyCampaignsScreen() {
   const router = useRouter();
   const { campaigns, hasHydrated } = useMyCampaignsStore();
+  const { draft, hasMeaningfulDraft, resetDraft } = useCampaignDraftStore();
   const [selectedTab, setSelectedTab] = useState<CreatorDashboardTab>('ALL');
+
+  const showActiveDraft =
+    (selectedTab === 'ALL' || selectedTab === 'DRAFTS') && hasMeaningfulDraft();
 
   // Filter campaigns by selected tab
   const activeStatusFilter = CREATOR_TAB_STATUS_MAPPING[selectedTab];
@@ -39,8 +45,14 @@ export default function MyCampaignsScreen() {
 
   // Calculate count for each tab
   const getTabCount = (tab: CreatorDashboardTab) => {
+    if (tab === 'DRAFTS') {
+      const baseCount = campaigns.filter((c) => c.status === 'DRAFT').length;
+      return hasMeaningfulDraft() ? baseCount + 1 : baseCount;
+    }
     const statuses = CREATOR_TAB_STATUS_MAPPING[tab];
-    if (!statuses) return campaigns.length;
+    if (!statuses) {
+      return campaigns.length + (hasMeaningfulDraft() ? 1 : 0);
+    }
     return campaigns.filter((c) => statuses.includes(c.status)).length;
   };
 
@@ -84,7 +96,7 @@ export default function MyCampaignsScreen() {
       case 'COMPLETED':
         return {
           title: 'No completed campaigns',
-          description: 'Concluded campaigns with verified distribution impression reports will appear here.',
+          description: 'Concluded campaigns with prototype distribution impression reports will appear here.',
         };
       case 'ALL':
       default:
@@ -170,7 +182,7 @@ export default function MyCampaignsScreen() {
           <ActivityIndicator size="large" color={Palette.primary700} />
           <Text style={styles.loadingText}>Loading your campaigns...</Text>
         </View>
-      ) : filteredCampaigns.length === 0 ? (
+      ) : filteredCampaigns.length === 0 && !showActiveDraft ? (
         <View style={styles.emptyWrapper}>
           {(() => {
             const emptyConfig = getEmptyStateConfig();
@@ -191,6 +203,11 @@ export default function MyCampaignsScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            showActiveDraft ? (
+              <DraftCampaignCard draft={draft} onDiscard={resetDraft} />
+            ) : undefined
+          }
           renderItem={({ item }) => (
             <CreatorCampaignCard
               campaign={item}

@@ -32,11 +32,10 @@ import {
 export default function MyCampaignDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getCampaignById, resubmitCampaign } = useMyCampaignsStore();
-  const { saveDraft } = useCampaignDraftStore();
+  const { getCampaignById } = useMyCampaignsStore();
+  const { loadCampaignIntoDraft } = useCampaignDraftStore();
 
   const campaign = id ? getCampaignById(id) : undefined;
-  const [isResubmitting, setIsResubmitting] = useState(false);
 
   if (!campaign) {
     return (
@@ -73,56 +72,10 @@ export default function MyCampaignDetailScreen() {
     campaign.status === 'SUBMITTED_FOR_REVIEW' || campaign.status === 'UNDER_REVIEW';
 
   const handleEditForChanges = () => {
-    // Populate campaign draft with current campaign data so creator can edit
-    saveDraft({
-      title: campaign.title,
-      category: campaign.category,
-      creatorName: campaign.creator,
-      summary: campaign.summary,
-      storyContent: campaign.storyContent || campaign.story,
-      storyHeadline: campaign.storyHeadline,
-      storyIntro: campaign.storyIntro,
-      storyImage: campaign.storyImage,
-      sources: campaign.supportingSources.map((s, idx) => ({
-        id: `src-${idx}`,
-        title: s.title,
-        url: s.url,
-        publisher: s.publisher,
-      })),
-      adImage: campaign.adImage,
-      adHeadline: campaign.adHeadline || '',
-      adDescription: campaign.adDescription || '',
-      adCTA: campaign.adCTA || 'Learn More',
-      locations: campaign.locations || [],
-      interests: campaign.interests || [],
-      channels: campaign.distributionChannels || [],
-      audienceDescription: campaign.audienceDescription || '',
-      durationDays: campaign.durationDays || 14,
-      fundingGoal: campaign.goal,
-      currentStep: 2, // Take directly to story/sources step where changes are usually needed
-    });
-
+    // Populate campaign draft with existing campaign ID and data so creator can edit
+    loadCampaignIntoDraft(campaign, 2);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     router.push('/create-campaign/story');
-  };
-
-  const handleResubmit = () => {
-    Alert.alert(
-      'Resubmit Campaign',
-      'Are you ready to submit your revisions back to the review queue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Resubmit for Review',
-          onPress: () => {
-            setIsResubmitting(true);
-            resubmitCampaign(campaign.id, 'Creator addressed review feedback and resubmitted.');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            setIsResubmitting(false);
-          },
-        },
-      ]
-    );
   };
 
   const handleOpenSource = async (url: string) => {
@@ -185,23 +138,7 @@ export default function MyCampaignDetailScreen() {
         />
       )}
 
-      {/* Resubmit Action Card (if CHANGES_REQUESTED) */}
-      {isChangesRequested && (
-        <View style={styles.resubmitCard}>
-          <Text style={styles.resubmitTitle}>Ready to Resubmit?</Text>
-          <Text style={styles.resubmitDesc}>
-            Once you have updated the required content or citations, send your campaign back to the verification queue.
-          </Text>
-          <AppButton
-            title={isResubmitting ? 'Submitting...' : 'Resubmit for Review'}
-            onPress={handleResubmit}
-            disabled={isResubmitting}
-            variant="primary"
-            size="md"
-            icon={<Ionicons name="send" size={16} color={Palette.pureWhite} />}
-          />
-        </View>
-      )}
+
 
       {/* Status Timeline */}
       <CampaignStatusTimeline

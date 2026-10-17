@@ -35,6 +35,10 @@ export default function ReviewerDetailScreen() {
     requestChanges,
     rejectCampaign,
     moveToFunding,
+    advanceToDistributionPrep,
+    launchLivePromotion,
+    completeCampaign,
+    endFundingPeriod,
   } = useMyCampaignsStore();
 
   const campaign = id ? getCampaignById(id) : undefined;
@@ -142,6 +146,74 @@ export default function ReviewerDetailScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     }
     setModalMode(null);
+  };
+
+  const handleEndFunding = () => {
+    Alert.alert(
+      'End Funding Period (Demo)',
+      'This concludes public backer contributions and transitions the campaign to FUNDING_ENDED.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Funding',
+          onPress: () => {
+            endFundingPeriod(campaign.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAdvanceToDistribution = () => {
+    Alert.alert(
+      'Advance to Distribution Preparation (Demo)',
+      'Ad creative and audience parameters will be configured for network deployment.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Advance to Prep',
+          onPress: () => {
+            advanceToDistributionPrep(campaign.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLaunchPromotion = () => {
+    Alert.alert(
+      'Launch Live Advertising (Demo)',
+      'This transitions the campaign to PROMOTING, simulating active message delivery across selected channels.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Launch Promotion',
+          onPress: () => {
+            launchLivePromotion(campaign.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCompletePromotion = () => {
+    Alert.alert(
+      'Complete Distribution Run (Demo)',
+      'Concludes message distribution and finalizes the Campaign Report.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete Campaign',
+          onPress: () => {
+            completeCampaign(campaign.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          },
+        },
+      ]
+    );
   };
 
   const handleOpenLink = async (url: string) => {
@@ -274,14 +346,109 @@ export default function ReviewerDetailScreen() {
         )}
 
         {campaign.status === 'FUNDING' && (
-          <View style={styles.statusCalloutSuccess}>
-            <Ionicons name="globe-outline" size={18} color={Palette.success700} />
-            <View style={styles.statusCalloutTextWrap}>
-              <Text style={styles.statusCalloutTitle}>Live in Public Funding</Text>
-              <Text style={styles.statusCalloutDesc}>
-                Discoverable in Explore & Home. Backers are actively funding amplification.
+          <View style={styles.approvedActionsWrap}>
+            <View style={styles.statusCalloutSuccess}>
+              <Ionicons name="globe-outline" size={18} color={Palette.success700} />
+              <View style={styles.statusCalloutTextWrap}>
+                <Text style={styles.statusCalloutTitle}>Live in Public Funding</Text>
+                <Text style={styles.statusCalloutDesc}>
+                  Discoverable in Explore & Home. Backers are actively funding amplification.
+                </Text>
+              </View>
+            </View>
+            <AppButton
+              title="Demo: End Funding Period"
+              onPress={handleEndFunding}
+              variant="outline"
+              size="md"
+              icon={<Ionicons name="time-outline" size={16} color={Palette.navy900} />}
+            />
+          </View>
+        )}
+
+        {(campaign.status === 'FUNDING_GOAL_REACHED' || campaign.status === 'FUNDING_ENDED') && (
+          <View style={styles.approvedActionsWrap}>
+            <View style={styles.approvedNotice}>
+              <Ionicons name="trophy-outline" size={18} color={Palette.purple700} />
+              <Text style={styles.approvedNoticeText}>
+                Funding concluded! Ready to configure advertising targeting parameters.
               </Text>
             </View>
+            <AppButton
+              title="Demo: Advance to Distribution Prep"
+              onPress={handleAdvanceToDistribution}
+              variant="primary"
+              size="md"
+              icon={<Ionicons name="hardware-chip-outline" size={16} color={Palette.pureWhite} />}
+            />
+          </View>
+        )}
+
+        {campaign.status === 'DISTRIBUTION_PREPARATION' && (
+          <View style={styles.approvedActionsWrap}>
+            <View style={styles.approvedNotice}>
+              <Ionicons name="construct-outline" size={18} color={Palette.purple700} />
+              <Text style={styles.approvedNoticeText}>
+                Distribution accounts staged. Deploy creative to live advertising networks.
+              </Text>
+            </View>
+            <AppButton
+              title="Demo: Launch Live Promotion"
+              onPress={handleLaunchPromotion}
+              variant="primary"
+              size="md"
+              icon={<Ionicons name="megaphone-outline" size={16} color={Palette.pureWhite} />}
+            />
+          </View>
+        )}
+
+        {campaign.status === 'PROMOTING' && (
+          <View style={styles.approvedActionsWrap}>
+            <View style={styles.statusCalloutSuccess}>
+              <Ionicons name="radio-outline" size={18} color={Palette.purple700} />
+              <View style={styles.statusCalloutTextWrap}>
+                <Text style={styles.statusCalloutTitle}>Active Live Distribution</Text>
+                <Text style={styles.statusCalloutDesc}>
+                  Impressions actively delivering across configured channels.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.secondaryActionsRow}>
+              <AppButton
+                title="View Progress"
+                onPress={() => router.push(`/report/${campaign.id}`)}
+                variant="outline"
+                size="md"
+                style={styles.actionBtnHalf}
+                icon={<Ionicons name="analytics-outline" size={16} color={Palette.navy900} />}
+              />
+              <AppButton
+                title="Demo: Complete"
+                onPress={handleCompletePromotion}
+                variant="primary"
+                size="md"
+                style={styles.actionBtnHalf}
+                icon={<Ionicons name="checkmark-done" size={16} color={Palette.pureWhite} />}
+              />
+            </View>
+          </View>
+        )}
+
+        {campaign.status === 'COMPLETED' && (
+          <View style={styles.approvedActionsWrap}>
+            <View style={styles.approvedNotice}>
+              <Ionicons name="checkmark-done-circle" size={18} color={Palette.success700} />
+              <Text style={styles.approvedNoticeText}>
+                Campaign distribution complete. Final performance report generated.
+              </Text>
+            </View>
+            <AppButton
+              title="View Final Report"
+              onPress={() => router.push(`/report/${campaign.id}`)}
+              variant="primary"
+              size="md"
+              icon={<Ionicons name="document-text-outline" size={16} color={Palette.pureWhite} />}
+            />
           </View>
         )}
       </View>

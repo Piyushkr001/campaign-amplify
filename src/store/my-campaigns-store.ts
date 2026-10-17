@@ -1,10 +1,27 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Campaign, CampaignDraft, CampaignStatusHistoryItem } from '@/types/campaign';
+import {
+  Campaign,
+  CampaignDraft,
+  CampaignStatus,
+  CampaignStatusHistoryItem,
+} from '@/types/campaign';
 import { calculateUseOfFunds, estimateReach } from '@/utils/reach';
 import { generateId } from '@/utils/id';
 import { queryClient } from '@/services/query-client';
+import { campaignKeys } from '@/constants/query-keys';
+import { isValidTransition } from '@/constants/campaign-status';
+
+export interface TransitionContext {
+  actor: 'CREATOR' | 'REVIEWER' | 'SYSTEM';
+  note?: string;
+}
+
+export interface TransitionResult {
+  success: boolean;
+  error?: string;
+}
 
 export interface MyCampaignsStore {
   campaigns: Campaign[];
@@ -12,17 +29,31 @@ export interface MyCampaignsStore {
   setHasHydrated: (hydrated: boolean) => void;
 
   addFromDraft: (draft: CampaignDraft) => Campaign;
+  updateFromDraft: (id: string, draft: CampaignDraft) => Campaign | undefined;
   addCampaign: (campaign: Campaign) => void;
   updateCampaign: (id: string, updates: Partial<Campaign>) => void;
   getCampaignById: (id: string) => Campaign | undefined;
 
+  // Centralized state-machine transition method
+  transitionCampaign: (
+    campaignId: string,
+    nextStatus: CampaignStatus,
+    context: TransitionContext
+  ) => TransitionResult;
+
   // Reviewer & Creator lifecycle actions
-  startReview: (id: string, note?: string) => void;
-  approveCampaign: (id: string, note?: string) => void;
-  requestChanges: (id: string, feedback: string) => void;
-  rejectCampaign: (id: string, reason: string) => void;
-  moveToFunding: (id: string, note?: string) => void;
-  resubmitCampaign: (id: string, note?: string) => void;
+  startReview: (id: string, note?: string) => TransitionResult;
+  approveCampaign: (id: string, note?: string) => TransitionResult;
+  requestChanges: (id: string, feedback: string) => TransitionResult;
+  rejectCampaign: (id: string, reason: string) => TransitionResult;
+  moveToFunding: (id: string, note?: string) => TransitionResult;
+  resubmitCampaign: (id: string, note?: string) => TransitionResult;
+
+  // Demo progression actions
+  advanceToDistributionPrep: (id: string, note?: string) => TransitionResult;
+  launchLivePromotion: (id: string, note?: string) => TransitionResult;
+  completeCampaign: (id: string, note?: string) => TransitionResult;
+  endFundingPeriod: (id: string, note?: string) => TransitionResult;
 }
 
 export const useMyCampaignsStore = create<MyCampaignsStore>()(
@@ -42,8 +73,19 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
         const useOfFundsBreakdown = calculateUseOfFunds(goal);
         const now = new Date().toISOString();
 
-        const initialHistory: CampaignStatusHistoryItem = {
+        // 1. Initial Draft Created history event
+        const draftHistory: CampaignStatusHistoryItem = {
           id: generateId('hist'),
+          toStatus: 'DRAFT',
+          note: 'Campaign draft initialized by creator.',
+          actor: 'CREATOR',
+          createdAt: now,
+        };
+
+        // 2. Submitted for Review history event
+        const submittedHistory: CampaignStatusHistoryItem = {
+          id: generateId('hist'),
+          fromStatus: 'DRAFT',
           toStatus: 'SUBMITTED_FOR_REVIEW',
           note: 'Campaign created and submitted for verification and policy review.',
           actor: 'CREATOR',
@@ -96,7 +138,8 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
           createdAt: now,
           submittedAt: now,
           backerCount: 0,
-          distributionChannels: draft.channels.length > 0 ? draft.channels : ['Meta Ads', 'Google Display'],
+          distributionChannels:
+            draft.channels.length > 0 ? draft.channels : ['Meta', 'Google Display'],
           useOfFunds: {
             advertising: 85,
             platformFee: 10,
@@ -107,202 +150,246 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
             url: s.url,
             publisher: s.publisher,
           })),
-          statusHistory: [initialHistory],
+          statusHistory: [draftHistory, submittedHistory],
         };
 
         set((state) => ({
           campaigns: [newCampaign, ...state.campaigns],
         }));
 
-        // Invalidate queries so any components listening for updates see it
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
         return newCampaign;
+      },
+
+      /**
+       * Updates an existing campaign record with changes made during draft revision editing.
+       * Prevents duplicate campaigns when addressing CHANGES_REQUESTED.
+       */
+      updateFromDraft: (id: string, draft: CampaignDraft) => {
+        const campaign = get().campaigns.find((c) => c.id === id);
+        if (!campaign) {
+          console.warn(`[MyCampaignsStore] Cannot update campaign: ${id} not found.`);
+          return undefined;
+        }
+
+        const goal = draft.fundingGoal || campaign.goal;
+        const { min: estimatedReachMin, max: estimatedReachMax } = estimateReach(goal);
+        const useOfFundsBreakdown = calculateUseOfFunds(goal);
+
+        const updatedCampaign: Campaign = {
+          ...campaign,
+          title: draft.title || campaign.title,
+          category: draft.category === 'All' ? campaign.category : draft.category,
+          creator: draft.creatorName || campaign.creator,
+          summary: draft.summary || campaign.summary,
+          story: draft.storyContent || campaign.story,
+          storyDetails: {
+            headline: draft.storyHeadline,
+            intro: draft.storyIntro,
+            content: draft.storyContent,
+            image: draft.storyImage,
+            caption: draft.storyImageCaption,
+            credit: draft.storyImageCredit,
+          },
+          storyHeadline: draft.storyHeadline,
+          storyIntro: draft.storyIntro,
+          storyContent: draft.storyContent,
+          storyImage: draft.storyImage,
+          storyImageCaption: draft.storyImageCaption,
+          storyImageCredit: draft.storyImageCredit,
+          suggestedAction: draft.suggestedAction,
+          adImage: draft.adImage || campaign.adImage,
+          adHeadline: draft.adHeadline || campaign.adHeadline,
+          adDescription: draft.adDescription || campaign.adDescription,
+          adCTA: draft.adCTA || campaign.adCTA,
+          locations: draft.locations || campaign.locations,
+          interests: draft.interests || campaign.interests,
+          channels: draft.channels || campaign.channels,
+          audienceDescription: draft.audienceDescription || campaign.audienceDescription,
+          durationDays: draft.durationDays || campaign.durationDays,
+          coverImage: draft.coverImage || campaign.coverImage,
+          goal,
+          estimatedReachMin,
+          estimatedReachMax,
+          distributionChannels:
+            draft.channels && draft.channels.length > 0
+              ? draft.channels
+              : campaign.distributionChannels,
+          supportingSources: (draft.sources || []).map((s) => ({
+            title: s.title,
+            url: s.url,
+            publisher: s.publisher,
+          })),
+        };
+
+        set((state) => ({
+          campaigns: state.campaigns.map((c) => (c.id === id ? updatedCampaign : c)),
+        }));
+
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+
+        return updatedCampaign;
       },
 
       addCampaign: (campaign) => {
         set((state) => ({
           campaigns: [campaign, ...state.campaigns],
         }));
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
       },
 
       updateCampaign: (id, updates) => {
         set((state) => ({
           campaigns: state.campaigns.map((c) => (c.id === id ? { ...c, ...updates } : c)),
         }));
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
       },
 
       getCampaignById: (id) => {
         return get().campaigns.find((c) => c.id === id);
       },
 
-      startReview: (id: string, note?: string) => {
+      /**
+       * Primary state-machine transition executor.
+       * Strictly validates the requested transition against ALLOWED_TRANSITIONS,
+       * appends an audit history entry, sets relevant timestamps, and invalidates queries.
+       */
+      transitionCampaign: (campaignId, nextStatus, context) => {
+        const campaign = get().campaigns.find((c) => c.id === campaignId);
+        if (!campaign) {
+          const errMsg = `[CampaignLifecycle] Campaign ${campaignId} not found.`;
+          console.error(errMsg);
+          return { success: false, error: errMsg };
+        }
+
+        const currentStatus = campaign.status;
+
+        // Validate transition
+        if (!isValidTransition(currentStatus, nextStatus)) {
+          const errMsg = `[CampaignLifecycle] Invalid transition: cannot transition campaign ${campaignId} from ${currentStatus} to ${nextStatus}.`;
+          console.warn(errMsg);
+          return { success: false, error: errMsg };
+        }
+
         const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'UNDER_REVIEW',
-                note: note || 'Editorial review started by verification team.',
-                actor: 'REVIEWER',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'UNDER_REVIEW',
-                reviewStartedAt: now,
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
-        });
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+        const historyItem: CampaignStatusHistoryItem = {
+          id: generateId('hist'),
+          fromStatus: currentStatus,
+          toStatus: nextStatus,
+          note: context.note,
+          actor: context.actor,
+          createdAt: now,
+        };
+
+        // Compute updated fields based on the destination status
+        const timestampUpdates: Partial<Campaign> = {};
+        if (nextStatus === 'SUBMITTED_FOR_REVIEW') {
+          timestampUpdates.submittedAt = now;
+        } else if (nextStatus === 'UNDER_REVIEW') {
+          timestampUpdates.reviewStartedAt = now;
+        } else if (nextStatus === 'APPROVED') {
+          timestampUpdates.approvedAt = now;
+          timestampUpdates.reviewFeedback = undefined; // clear revision feedback on approval
+        } else if (nextStatus === 'CHANGES_REQUESTED') {
+          timestampUpdates.requestedChangesAt = now;
+          timestampUpdates.reviewFeedback = context.note;
+        } else if (nextStatus === 'REJECTED') {
+          timestampUpdates.rejectedAt = now;
+          timestampUpdates.rejectionReason = context.note;
+        } else if (nextStatus === 'FUNDING') {
+          timestampUpdates.fundedAt = now;
+        } else if (nextStatus === 'COMPLETED') {
+          timestampUpdates.status = 'COMPLETED';
+        }
+
+        set((state) => ({
+          campaigns: state.campaigns.map((c) => {
+            if (c.id !== campaignId) return c;
+            return {
+              ...c,
+              status: nextStatus,
+              ...timestampUpdates,
+              statusHistory: [...(c.statusHistory || []), historyItem],
+            };
+          }),
+        }));
+
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.detail(campaignId) });
+
+        return { success: true };
       },
 
-      approveCampaign: (id: string, note?: string) => {
-        const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'APPROVED',
-                note: note || 'Campaign passed source verification and policy compliance checks.',
-                actor: 'REVIEWER',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'APPROVED',
-                approvedAt: now,
-                reviewFeedback: undefined, // Clear feedback on approval
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
+      startReview: (id, note) => {
+        return get().transitionCampaign(id, 'UNDER_REVIEW', {
+          actor: 'REVIEWER',
+          note: note || 'Editorial review started by verification team.',
         });
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
       },
 
-      requestChanges: (id: string, feedback: string) => {
-        const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'CHANGES_REQUESTED',
-                note: feedback,
-                actor: 'REVIEWER',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'CHANGES_REQUESTED',
-                reviewFeedback: feedback,
-                requestedChangesAt: now,
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
+      approveCampaign: (id, note) => {
+        return get().transitionCampaign(id, 'APPROVED', {
+          actor: 'REVIEWER',
+          note: note || 'Campaign passed source verification and policy compliance checks.',
         });
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
       },
 
-      rejectCampaign: (id: string, reason: string) => {
-        const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'REJECTED',
-                note: reason,
-                actor: 'REVIEWER',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'REJECTED',
-                rejectionReason: reason,
-                rejectedAt: now,
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
+      requestChanges: (id, feedback) => {
+        return get().transitionCampaign(id, 'CHANGES_REQUESTED', {
+          actor: 'REVIEWER',
+          note: feedback,
         });
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
       },
 
-      moveToFunding: (id: string, note?: string) => {
-        const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'FUNDING',
-                note: note || 'Campaign published and opened for backer funding.',
-                actor: 'REVIEWER',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'FUNDING',
-                fundedAt: now,
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
+      rejectCampaign: (id, reason) => {
+        return get().transitionCampaign(id, 'REJECTED', {
+          actor: 'REVIEWER',
+          note: reason,
         });
-        // Invalidate queries so campaign becomes discoverable publicly in Explore and Home!
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
       },
 
-      resubmitCampaign: (id: string, note?: string) => {
-        const now = new Date().toISOString();
-        set((state) => {
-          return {
-            campaigns: state.campaigns.map((c) => {
-              if (c.id !== id) return c;
-              const historyItem: CampaignStatusHistoryItem = {
-                id: generateId('hist'),
-                fromStatus: c.status,
-                toStatus: 'SUBMITTED_FOR_REVIEW',
-                note: note || 'Campaign updated by creator and resubmitted for review.',
-                actor: 'CREATOR',
-                createdAt: now,
-              };
-              return {
-                ...c,
-                status: 'SUBMITTED_FOR_REVIEW',
-                submittedAt: now,
-                statusHistory: [...(c.statusHistory || []), historyItem],
-              };
-            }),
-          };
+      moveToFunding: (id, note) => {
+        return get().transitionCampaign(id, 'FUNDING', {
+          actor: 'REVIEWER',
+          note: note || 'Campaign published and opened for community backing.',
         });
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-        queryClient.invalidateQueries({ queryKey: ['campaign', id] });
+      },
+
+      resubmitCampaign: (id, note) => {
+        return get().transitionCampaign(id, 'SUBMITTED_FOR_REVIEW', {
+          actor: 'CREATOR',
+          note: note || 'Campaign updated by creator and resubmitted for review.',
+        });
+      },
+
+      advanceToDistributionPrep: (id, note) => {
+        return get().transitionCampaign(id, 'DISTRIBUTION_PREPARATION', {
+          actor: 'REVIEWER',
+          note: note || 'Funding completed. Distribution preparation and channel setup initiated.',
+        });
+      },
+
+      launchLivePromotion: (id, note) => {
+        return get().transitionCampaign(id, 'PROMOTING', {
+          actor: 'REVIEWER',
+          note: note || 'Advertising campaigns deployed to live digital channels.',
+        });
+      },
+
+      completeCampaign: (id, note) => {
+        return get().transitionCampaign(id, 'COMPLETED', {
+          actor: 'REVIEWER',
+          note: note || 'Distribution cycle concluded and final impact metrics generated.',
+        });
+      },
+
+      endFundingPeriod: (id, note) => {
+        return get().transitionCampaign(id, 'FUNDING_ENDED', {
+          actor: 'REVIEWER',
+          note: note || 'Funding period concluded by platform review.',
+        });
       },
     }),
     {
@@ -310,7 +397,7 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
       storage: createJSONStorage(() => AsyncStorage),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
-        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
       },
     }
   )
