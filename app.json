@@ -8,7 +8,9 @@
     "scheme": "campaignamplify",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.campaignamplify.app",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -17,6 +19,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "package": "com.campaignamplify.app",
       "predictiveBackGestureEnabled": false
     },
     "web": {
