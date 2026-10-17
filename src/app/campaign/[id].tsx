@@ -20,6 +20,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useCampaign } from '@/hooks/useCampaigns';
+import { canBackCampaign, CAMPAIGN_STATUS_CONFIG } from '@/constants/campaign-status';
 import {
   calculateFundingProgress,
   formatCurrency,
@@ -215,21 +216,110 @@ export default function CampaignDetailScreen() {
             </View>
           </View>
 
-          {/* Primary CTA */}
-          <AppButton
-            title="Back This Campaign"
-            onPress={handleOpenContribution}
-            variant="primary"
-            size="lg"
-            fullWidth
-            icon={<Ionicons name="flash" size={18} color={Palette.pureWhite} />}
-            style={styles.primaryCta}
-          />
-
-          <Text style={styles.nonDonationNotice}>
-            Funds are applied exclusively to public advertising and message distribution. They are not
-            direct donations to the creator.
-          </Text>
+          {/* Status-aware CTA Block */}
+          {canBackCampaign(campaign) ? (
+            <>
+              <AppButton
+                title="Back This Campaign"
+                onPress={handleOpenContribution}
+                variant="primary"
+                size="lg"
+                fullWidth
+                icon={<Ionicons name="flash" size={18} color={Palette.pureWhite} />}
+                style={styles.primaryCta}
+              />
+              <Text style={styles.nonDonationNotice}>
+                Funds are applied exclusively to public advertising and message distribution. They are not
+                direct donations to the creator.
+              </Text>
+            </>
+          ) : campaign.status === 'PROMOTING' ? (
+            <View style={styles.statusNoticeBox}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="radio-outline" size={18} color={Palette.purple600} />
+                <Text style={styles.statusNoticeTitle}>Promotion Active</Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                This campaign is actively being promoted across verified ad channels and digital networks.
+              </Text>
+              <AppButton
+                title="View Distribution Channels"
+                onPress={() => {
+                  Alert.alert(
+                    'Active Distribution',
+                    `Delivering messages across: ${campaign.distributionChannels.join(', ')}.`
+                  );
+                }}
+                variant="outline"
+                size="md"
+                fullWidth
+                icon={<Ionicons name="megaphone-outline" size={16} color={Palette.navy950} />}
+                style={styles.statusCta}
+              />
+            </View>
+          ) : campaign.status === 'COMPLETED' ? (
+            <View style={styles.statusNoticeBox}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="checkmark-done-circle-outline" size={18} color={Palette.success700} />
+                <Text style={styles.statusNoticeTitle}>Campaign Completed</Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                The distribution run has concluded with verified delivery metrics and impressions.
+              </Text>
+              <AppButton
+                title="View Final Report"
+                onPress={() => router.push(`/report/${campaign.id}`)}
+                variant="primary"
+                size="md"
+                fullWidth
+                icon={<Ionicons name="document-text-outline" size={16} color={Palette.pureWhite} />}
+                style={styles.statusCta}
+              />
+            </View>
+          ) : campaign.status === 'CHANGES_REQUESTED' ? (
+            <View style={[styles.statusNoticeBox, styles.statusNoticeWarning]}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="alert-circle-outline" size={18} color={Palette.amber600} />
+                <Text style={[styles.statusNoticeTitle, styles.statusWarningTitle]}>Creator Action Required</Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                {campaign.reviewFeedback || 'The verification team requested revisions to sources or ad copy before publication.'}
+              </Text>
+            </View>
+          ) : campaign.status === 'APPROVED' ? (
+            <View style={[styles.statusNoticeBox, styles.statusNoticeSuccess]}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="checkmark-circle-outline" size={18} color={Palette.success700} />
+                <Text style={[styles.statusNoticeTitle, styles.statusSuccessTitle]}>Preparing for Funding</Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                This campaign was approved and will open for community backing shortly.
+              </Text>
+            </View>
+          ) : campaign.status === 'REJECTED' ? (
+            <View style={[styles.statusNoticeBox, styles.statusNoticeDanger]}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="close-circle-outline" size={18} color={Palette.error600} />
+                <Text style={[styles.statusNoticeTitle, styles.statusDangerTitle]}>Campaign Not Approved</Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                {campaign.rejectionReason || 'This campaign did not pass platform editorial and citation vetting standards.'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.statusNoticeBox}>
+              <View style={styles.statusNoticeHeader}>
+                <Ionicons name="time-outline" size={18} color={Palette.info600} />
+                <Text style={styles.statusNoticeTitle}>
+                  {CAMPAIGN_STATUS_CONFIG[campaign.status]?.label || 'Under Review'}
+                </Text>
+              </View>
+              <Text style={styles.statusNoticeBody}>
+                {CAMPAIGN_STATUS_CONFIG[campaign.status]?.description ||
+                  'This campaign is undergoing verification and is not yet accepting public backing.'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Section: Campaign Story (Structured or Narrative) */}
@@ -799,5 +889,53 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: Palette.primary700,
+  },
+  statusNoticeBox: {
+    backgroundColor: Palette.neutral50,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  statusNoticeWarning: {
+    backgroundColor: Palette.amber50,
+    borderColor: Palette.amber200,
+  },
+  statusNoticeSuccess: {
+    backgroundColor: Palette.success50,
+    borderColor: Palette.success200,
+  },
+  statusNoticeDanger: {
+    backgroundColor: Palette.error50,
+    borderColor: Palette.error200,
+  },
+  statusNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  statusNoticeTitle: {
+    ...Typography.bodySmall,
+    fontWeight: '700',
+    color: Palette.navy950,
+  },
+  statusWarningTitle: {
+    color: Palette.amber700,
+  },
+  statusSuccessTitle: {
+    color: Palette.success700,
+  },
+  statusDangerTitle: {
+    color: Palette.error600,
+  },
+  statusNoticeBody: {
+    ...Typography.caption,
+    color: Palette.neutral600,
+    lineHeight: 16,
+  },
+  statusCta: {
+    marginTop: Spacing.md,
   },
 });

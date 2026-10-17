@@ -13,6 +13,7 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 import { CampaignDraft } from '@/types/campaign';
+import { Config } from '@/constants/config';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateReach, formatReachEstimate } from '@/utils/reach';
 import { AdCreativePreview } from './AdCreativePreview';
@@ -91,15 +92,21 @@ export const CampaignSubmissionPreviewModal: React.FC<CampaignSubmissionPreviewM
             <View style={styles.fundsCard}>
               <Text style={styles.fundsTitle}>Use of Funds Breakdown</Text>
               <View style={styles.fundRow}>
-                <Text style={styles.fundLabel}>Direct Paid Advertising (85%)</Text>
+                <Text style={styles.fundLabel}>
+                  Direct Paid Advertising ({Config.feeStructure.advertisingPercentage}%)
+                </Text>
                 <Text style={styles.fundAmount}>{formatCurrency(funds.advertising)}</Text>
               </View>
               <View style={styles.fundRow}>
-                <Text style={styles.fundLabel}>Platform Operations & Verification (10%)</Text>
+                <Text style={styles.fundLabel}>
+                  Platform Operations & Verification ({Config.feeStructure.platformFeePercentage}%)
+                </Text>
                 <Text style={styles.fundAmount}>{formatCurrency(funds.platformFee)}</Text>
               </View>
               <View style={styles.fundRow}>
-                <Text style={styles.fundLabel}>Payment Processing (5%)</Text>
+                <Text style={styles.fundLabel}>
+                  Payment Processing ({Config.feeStructure.paymentProcessingPercentage}%)
+                </Text>
                 <Text style={styles.fundAmount}>{formatCurrency(funds.paymentProcessing)}</Text>
               </View>
             </View>

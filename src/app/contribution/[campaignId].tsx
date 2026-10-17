@@ -28,6 +28,7 @@ import {
   formatReachRange,
 } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
+import { Config } from '@/constants/config';
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250];
 
@@ -262,15 +263,21 @@ export default function ChooseContributionScreen() {
             <View style={styles.impactDivider} />
 
             <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Direct Advertising Allocation (85%):</Text>
+              <Text style={styles.breakdownLabel}>
+                Direct Advertising Allocation ({Config.feeStructure.advertisingPercentage}%):
+              </Text>
               <Text style={styles.breakdownValue}>{formatCurrency(funds.advertising)}</Text>
             </View>
             <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Platform Fee (10%):</Text>
+              <Text style={styles.breakdownLabel}>
+                Platform Fee ({Config.feeStructure.platformFeePercentage}%):
+              </Text>
               <Text style={styles.breakdownValue}>{formatCurrency(funds.platformFee)}</Text>
             </View>
             <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Payment Processing (5%):</Text>
+              <Text style={styles.breakdownLabel}>
+                Payment Processing ({Config.feeStructure.paymentProcessingPercentage}%):
+              </Text>
               <Text style={styles.breakdownValue}>{formatCurrency(funds.paymentProcessing)}</Text>
             </View>
 

@@ -94,6 +94,15 @@ export interface CampaignStoryDetails {
   credit?: string;
 }
 
+export interface CampaignStatusHistoryItem {
+  id: string;
+  fromStatus?: CampaignStatus;
+  toStatus: CampaignStatus;
+  note?: string;
+  actor: 'CREATOR' | 'REVIEWER' | 'SYSTEM';
+  createdAt: string;
+}
+
 export interface Campaign {
   id: string;
   title: string;
@@ -134,4 +143,14 @@ export interface Campaign {
   distributionChannels: string[];
   useOfFunds: UseOfFundsBreakdown;
   supportingSources: SupportingSource[];
+
+  // Lifecycle audit & review fields
+  statusHistory?: CampaignStatusHistoryItem[];
+  reviewFeedback?: string;
+  rejectionReason?: string;
+  reviewStartedAt?: string;
+  approvedAt?: string;
+  requestedChangesAt?: string;
+  rejectedAt?: string;
+  fundedAt?: string;
 }

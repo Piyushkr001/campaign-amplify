@@ -12,6 +12,7 @@ export const Palette = {
   primary700: '#1D4ED8',
   primary600: '#2563EB',
   primary500: '#3B82F6',
+  primary200: '#BFDBFE',
   primary100: '#DBEAFE',
   primary50: '#EFF6FF',
 
@@ -30,6 +31,7 @@ export const Palette = {
   neutral900: '#0F172A',
 
   // Semantic
+  success800: '#065F46',
   success700: '#047857',
   success600: '#059669',
   success500: '#10B981',
@@ -45,8 +47,39 @@ export const Palette = {
   warning100: '#FEF3C7',
   warning50: '#FFFBEB',
 
+  // Amber
+  amber50: '#FFFBEB',
+  amber100: '#FEF3C7',
+  amber200: '#FDE68A',
+  amber500: '#F59E0B',
+  amber600: '#D97706',
+  amber700: '#B45309',
+  amber800: '#92400E',
+  amber900: '#78350F',
+  amber950: '#451A03',
+
+  // Purple / Violet
+  purple50: '#FAF5FF',
+  purple100: '#F3E8FF',
+  purple200: '#E9D5FF',
+  purple600: '#9333EA',
+  purple700: '#7E22CE',
+  purple800: '#6B21A8',
+  purple900: '#581C87',
+
+  // Info
+  info50: '#F0F9FF',
+  info100: '#E0F2FE',
+  info200: '#BAE6FD',
+  info600: '#0284C7',
+  info700: '#0369A1',
+  info800: '#075985',
+
+  // Error additions
+  error700: '#B91C1C',
   error600: '#DC2626',
   error500: '#EF4444',
+  error200: '#FECACA',
   error100: '#FEE2E2',
   error50: '#FEF2F2',
 

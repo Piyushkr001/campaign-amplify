@@ -55,27 +55,44 @@ export default function ContributionFailedScreen() {
     }
   };
 
+  const isCancelled = payment?.status === 'CANCELLED';
+
   return (
     <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
       <View style={styles.content}>
-        {/* Error Icon */}
-        <View style={styles.errorCircle}>
-          <Ionicons name="close-sharp" size={42} color={Palette.pureWhite} />
+        {/* Error or Cancel Icon */}
+        <View style={[styles.errorCircle, isCancelled && styles.cancelCircle]}>
+          <Ionicons
+            name={isCancelled ? 'close-circle-outline' : 'close-sharp'}
+            size={42}
+            color={Palette.pureWhite}
+          />
         </View>
 
-        <Text style={styles.title}>Payment Unsuccessful</Text>
+        <Text style={styles.title}>{isCancelled ? 'Payment Cancelled' : 'Payment Unsuccessful'}</Text>
         <Text style={styles.subtitle}>
-          Your simulated payment could not be processed. No campaign funding was added, and no charges were made.
+          {isCancelled
+            ? 'You were not charged. Your contribution checkout was cancelled and no campaign funding was modified.'
+            : 'Your simulated payment could not be processed. No campaign funding was added, and no charges were made.'}
         </Text>
 
         {/* Diagnostic Card */}
         <View style={styles.errorCard}>
           <View style={styles.errorHeader}>
-            <Ionicons name="alert-circle-outline" size={18} color={Palette.error600} />
-            <Text style={styles.errorTitle}>Transaction Status</Text>
+            <Ionicons
+              name={isCancelled ? 'information-circle-outline' : 'alert-circle-outline'}
+              size={18}
+              color={isCancelled ? Palette.amber600 : Palette.error600}
+            />
+            <Text style={[styles.errorTitle, isCancelled && styles.cancelTitle]}>
+              {isCancelled ? 'Checkout Status' : 'Transaction Status'}
+            </Text>
           </View>
           <Text style={styles.errorMessage}>
-            {payment?.errorMessage || 'Simulated test card decline (Card declined by issuing bank).'}
+            {payment?.errorMessage ||
+              (isCancelled
+                ? 'Simulated payment was cancelled by contributor.'
+                : 'Simulated test card decline (Card declined by issuing bank).')}
           </Text>
           {payment?.reference ? (
             <Text style={styles.errorRef}>Attempt Reference: {payment.reference}</Text>
@@ -86,14 +103,14 @@ export default function ContributionFailedScreen() {
         <View style={styles.reassuranceCard}>
           <Ionicons name="shield-checkmark-outline" size={16} color={Palette.neutral600} />
           <Text style={styles.reassuranceText}>
-            You were not charged. You can test again with simulated success or modify your contribution amount.
+            You were not charged. You can return to review or try the simulated transaction again.
           </Text>
         </View>
 
         {/* Actions */}
         <View style={styles.actionsContainer}>
           <AppButton
-            title="Try Again with Test Card"
+            title="Try Again"
             onPress={handleTryAgain}
             variant="primary"
             size="lg"
@@ -101,13 +118,15 @@ export default function ContributionFailedScreen() {
             icon={<Ionicons name="refresh-outline" size={18} color={Palette.pureWhite} />}
           />
 
-          <AppButton
-            title="Change Contribution Amount"
-            onPress={handleChangeAmount}
-            variant="outline"
-            size="md"
-            fullWidth
-          />
+          {!isCancelled && (
+            <AppButton
+              title="Change Contribution Amount"
+              onPress={handleChangeAmount}
+              variant="outline"
+              size="md"
+              fullWidth
+            />
+          )}
 
           <Pressable
             onPress={handleReturnToCampaign}
@@ -141,6 +160,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 4,
+  },
+  cancelCircle: {
+    backgroundColor: Palette.amber500,
+    shadowColor: Palette.amber500,
+  },
+  cancelTitle: {
+    color: Palette.amber600,
   },
   title: {
     ...Typography.h1,

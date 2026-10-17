@@ -50,6 +50,7 @@ export interface CampaignDraftStore {
   updateSource: (id: string, updated: Partial<CampaignSource>) => void;
   removeSource: (id: string) => void;
   saveAsDraft: () => void;
+  saveDraft: (data?: Partial<CampaignDraft>) => void;
   resetDraft: () => void;
   setHasHydrated: (status: boolean) => void;
   hasDraft: () => boolean;
@@ -175,6 +176,23 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
           lastSavedAt: now,
           isSaving: false,
         }));
+      },
+
+      saveDraft: (data?: Partial<CampaignDraft>) => {
+        const now = new Date().toISOString();
+        if (data) {
+          set((state) => ({
+            draft: {
+              ...state.draft,
+              ...data,
+              lastSavedAt: now,
+            },
+            lastSavedAt: now,
+            isSaving: false,
+          }));
+        } else {
+          get().saveAsDraft();
+        }
       },
 
       resetDraft: () => {

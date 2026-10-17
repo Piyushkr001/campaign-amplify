@@ -18,6 +18,9 @@ import { useContributionStore } from '@/store/contribution-store';
 import { useCampaign } from '@/hooks/useCampaigns';
 import { formatCurrency, formatReachRange } from '@/utils/formatters';
 
+import { Config } from '@/constants/config';
+import { EmptyState } from '@/components/ui/EmptyState';
+
 export default function ContributionReceiptScreen() {
   const router = useRouter();
   const { contributionId, paymentId } = useLocalSearchParams<{
@@ -29,16 +32,57 @@ export default function ContributionReceiptScreen() {
 
   const contribution = contributionId ? getContributionById(contributionId) : undefined;
   const payment = paymentId ? getPaymentById(paymentId) : undefined;
-  const campaignId = contribution?.campaignId || payment?.campaignId || '';
 
+  // Strict validation: Require valid successful transaction
+  const isTransactionValid =
+    contribution &&
+    contribution.status === 'SUCCESS' &&
+    (!payment || payment.status === 'SUCCESS');
+
+  const campaignId = contribution?.campaignId || payment?.campaignId || '';
   const { data: campaign } = useCampaign(campaignId);
 
-  const amount = contribution?.amount || payment?.amount || 50;
-  const adBudget = contribution?.advertisingAllocation || Math.round(amount * 0.85);
-  const platformFee = contribution?.platformFee || Math.round(amount * 0.10);
-  const processingFee = contribution?.processingFee || Math.round(amount * 0.05);
-  const reference = payment?.reference || contribution?.paymentReference || 'DEMO-AMP-920183';
-  const timestamp = contribution?.completedAt || contribution?.createdAt || payment?.createdAt || new Date().toISOString();
+  if (!isTransactionValid) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navRow}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="receipt-outline"
+          title="Transaction Not Found"
+          description="We could not locate a completed, verified transaction receipt for this session."
+          actionTitle="Explore Active Campaigns"
+          onAction={() => router.replace('/(tabs)/explore')}
+        />
+        <View style={styles.bottomActions}>
+          {campaignId ? (
+            <AppButton
+              title="Return to Campaign"
+              onPress={() => router.replace(`/campaign/${campaignId}`)}
+              variant="outline"
+              size="md"
+              fullWidth
+            />
+          ) : null}
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  const amount = contribution.amount;
+  const adBudget = contribution.advertisingAllocation;
+  const platformFee = contribution.platformFee;
+  const processingFee = contribution.processingFee;
+  const reference = payment?.reference || contribution.paymentReference || 'N/A';
+  const timestamp = contribution.completedAt || contribution.createdAt;
   const dateFormatted = new Date(timestamp).toLocaleDateString([], {
     year: 'numeric',
     month: 'short',
@@ -47,13 +91,13 @@ export default function ContributionReceiptScreen() {
     minute: '2-digit',
   });
 
-  const minImp = contribution?.estimatedImpressionsMin || Math.round(adBudget * 20);
-  const maxImp = contribution?.estimatedImpressionsMax || Math.round(adBudget * 30);
+  const minImp = contribution.estimatedImpressionsMin;
+  const maxImp = contribution.estimatedImpressionsMax;
 
   const handleShareReceipt = async () => {
     try {
       await Share.share({
-        message: `Contribution Receipt for "${campaign?.title || 'Campaign Amplification'}": Total ${formatCurrency(amount)} sponsored. Reference: ${reference}`,
+        message: `Contribution Receipt (Demo) for "${campaign?.title || 'Campaign Amplification'}": Total ${formatCurrency(amount)} sponsored. Reference: ${reference}`,
       });
     } catch {
       // Ignore dismiss
@@ -84,7 +128,7 @@ export default function ContributionReceiptScreen() {
           style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
         </Pressable>
-        <Text style={styles.navTitle}>Official Receipt</Text>
+        <Text style={styles.navTitle}>Contribution Receipt — Demo</Text>
         <Pressable
           onPress={handleShareReceipt}
           accessibilityRole="button"
@@ -101,7 +145,7 @@ export default function ContributionReceiptScreen() {
         <View style={styles.receiptBrandRow}>
           <View>
             <Text style={styles.brandName}>CAMPAIGN AMPLIFY</Text>
-            <Text style={styles.receiptSubtitle}>Community Message Distribution</Text>
+            <Text style={styles.receiptSubtitle}>Demo Payment Receipt</Text>
           </View>
           <View style={styles.statusPill}>
             <Ionicons name="checkmark-circle" size={12} color={Palette.success700} />
@@ -129,7 +173,7 @@ export default function ContributionReceiptScreen() {
         <View style={styles.campaignSection}>
           <Text style={styles.metaLabel}>Funded Campaign</Text>
           <Text style={styles.campaignTitleText}>
-            {campaign?.title || contribution?.campaignTitle || 'Campaign Message'}
+            {campaign?.title || contribution.campaignTitle || 'Campaign Message'}
           </Text>
           <Text style={styles.creatorText}>
             Creator: {campaign?.creator || 'Community Campaigner'}
@@ -143,15 +187,21 @@ export default function ContributionReceiptScreen() {
           <Text style={styles.sectionHeading}>Itemized Allocation</Text>
 
           <View style={styles.lineItem}>
-            <Text style={styles.lineDesc}>Paid Advertising Distribution (85%)</Text>
+            <Text style={styles.lineDesc}>
+              Paid Advertising Distribution ({Config.feeStructure.advertisingPercentage}%)
+            </Text>
             <Text style={styles.lineAmount}>{formatCurrency(adBudget)}</Text>
           </View>
           <View style={styles.lineItem}>
-            <Text style={styles.lineDesc}>Platform Operations & Review (10%)</Text>
+            <Text style={styles.lineDesc}>
+              Platform Operations & Review ({Config.feeStructure.platformFeePercentage}%)
+            </Text>
             <Text style={styles.lineAmount}>{formatCurrency(platformFee)}</Text>
           </View>
           <View style={styles.lineItem}>
-            <Text style={styles.lineDesc}>Payment Processing (5%)</Text>
+            <Text style={styles.lineDesc}>
+              Payment Processing ({Config.feeStructure.paymentProcessingPercentage}%)
+            </Text>
             <Text style={styles.lineAmount}>{formatCurrency(processingFee)}</Text>
           </View>
 

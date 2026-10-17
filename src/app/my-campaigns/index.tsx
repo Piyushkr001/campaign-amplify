@@ -1,0 +1,319 @@
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Palette } from '@/constants/colors';
+import { BorderRadius, Spacing } from '@/constants/spacing';
+import { Typography } from '@/constants/typography';
+import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { AppButton } from '@/components/ui/AppButton';
+import { CreatorCampaignCard } from '@/components/campaign/CreatorCampaignCard';
+import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import {
+  CREATOR_DASHBOARD_TABS,
+  CREATOR_TAB_STATUS_MAPPING,
+  CreatorDashboardTab,
+} from '@/constants/campaign-status';
+import { Campaign } from '@/types/campaign';
+
+export default function MyCampaignsScreen() {
+  const router = useRouter();
+  const { campaigns, hasHydrated } = useMyCampaignsStore();
+  const [selectedTab, setSelectedTab] = useState<CreatorDashboardTab>('ALL');
+
+  // Filter campaigns by selected tab
+  const activeStatusFilter = CREATOR_TAB_STATUS_MAPPING[selectedTab];
+  const filteredCampaigns = campaigns.filter((c) => {
+    if (!activeStatusFilter) return true;
+    return activeStatusFilter.includes(c.status);
+  });
+
+  // Calculate count for each tab
+  const getTabCount = (tab: CreatorDashboardTab) => {
+    const statuses = CREATOR_TAB_STATUS_MAPPING[tab];
+    if (!statuses) return campaigns.length;
+    return campaigns.filter((c) => statuses.includes(c.status)).length;
+  };
+
+  const handleCardPress = (campaign: Campaign) => {
+    if (campaign.status === 'DRAFT') {
+      router.push('/create-campaign/basics');
+    } else {
+      router.push(`/my-campaigns/${campaign.id}`);
+    }
+  };
+
+  const getEmptyStateConfig = () => {
+    switch (selectedTab) {
+      case 'UNDER_REVIEW':
+        return {
+          title: 'No campaigns under review',
+          description: 'Campaigns submitted for editorial and source verification will appear here.',
+        };
+      case 'REQUIRES_ACTION':
+        return {
+          title: 'No actions required',
+          description: 'Campaigns requiring adjustments, citations, or creator revisions will appear here.',
+        };
+      case 'DRAFTS':
+        return {
+          title: 'No drafts in progress',
+          description: 'Start building a campaign message to distribute across digital channels.',
+          actionTitle: 'Create New Campaign',
+          onAction: () => router.push('/create-campaign/basics'),
+        };
+      case 'FUNDING':
+        return {
+          title: 'No funding campaigns yet',
+          description: 'Once reviewed and approved, campaigns open for community backing will show here.',
+        };
+      case 'PROMOTING':
+        return {
+          title: 'No active promotions',
+          description: 'Campaigns that reach their funding milestone and are actively running ads will appear here.',
+        };
+      case 'COMPLETED':
+        return {
+          title: 'No completed campaigns',
+          description: 'Concluded campaigns with verified distribution impression reports will appear here.',
+        };
+      case 'ALL':
+      default:
+        return {
+          title: 'No campaigns found',
+          description: 'You have not submitted any amplification campaigns yet. Create your first campaign to get started.',
+          actionTitle: 'Create Campaign',
+          onAction: () => router.push('/create-campaign/basics'),
+        };
+    }
+  };
+
+  return (
+    <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+      {/* Nav Header */}
+      <View style={styles.navHeader}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={8}
+          style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+        </Pressable>
+        <Text style={styles.navTitle}>Creator Dashboard</Text>
+        <Pressable
+          onPress={() => router.push('/create-campaign/basics')}
+          accessibilityRole="button"
+          accessibilityLabel="Create campaign"
+          hitSlop={8}
+          style={styles.createIconBtn}>
+          <Ionicons name="add" size={22} color={Palette.primary700} />
+        </Pressable>
+      </View>
+
+      {/* Header Titles */}
+      <View style={styles.headerTitles}>
+        <Text style={styles.pageTitle}>My Campaigns</Text>
+        <Text style={styles.pageSubtitle}>
+          Manage your drafts, review status, funding progress, and distribution.
+        </Text>
+      </View>
+
+      {/* Horizontal Tabs Filter */}
+      <View style={styles.tabsWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsScrollContent}>
+          {CREATOR_DASHBOARD_TABS.map((tab) => {
+            const count = getTabCount(tab.key);
+            const isSelected = selectedTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setSelectedTab(tab.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isSelected }}
+                style={[styles.tabBtn, isSelected && styles.tabBtnSelected]}>
+                <Text style={[styles.tabBtnText, isSelected && styles.tabBtnTextSelected]}>
+                  {tab.label}
+                </Text>
+                {count > 0 && (
+                  <View style={[styles.tabCountBadge, isSelected && styles.tabCountBadgeSelected]}>
+                    <Text
+                      style={[
+                        styles.tabCountBadgeText,
+                        isSelected && styles.tabCountBadgeTextSelected,
+                      ]}>
+                      {count}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Campaigns List or Loading/Empty State */}
+      {!hasHydrated ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={styles.loadingText}>Loading your campaigns...</Text>
+        </View>
+      ) : filteredCampaigns.length === 0 ? (
+        <View style={styles.emptyWrapper}>
+          {(() => {
+            const emptyConfig = getEmptyStateConfig();
+            return (
+              <EmptyState
+                iconName="folder-open-outline"
+                title={emptyConfig.title}
+                description={emptyConfig.description}
+                actionTitle={emptyConfig.actionTitle}
+                onAction={emptyConfig.onAction}
+              />
+            );
+          })()}
+        </View>
+      ) : (
+        <FlatList
+          data={filteredCampaigns}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <CreatorCampaignCard
+              campaign={item}
+              onPress={() => handleCardPress(item)}
+              onPrimaryAction={() => handleCardPress(item)}
+            />
+          )}
+        />
+      )}
+    </ScreenContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  navHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Palette.pureWhite,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navTitle: {
+    ...Typography.bodySmall,
+    fontWeight: '700',
+    color: Palette.navy950,
+  },
+  createIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitles: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  pageTitle: {
+    ...Typography.h1,
+    color: Palette.navy950,
+  },
+  pageSubtitle: {
+    ...Typography.bodySmall,
+    color: Palette.neutral500,
+    marginTop: 2,
+  },
+  tabsWrapper: {
+    marginBottom: Spacing.sm,
+  },
+  tabsScrollContent: {
+    paddingVertical: 4,
+    gap: 8,
+  },
+  tabBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Palette.neutral100,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.pill,
+    gap: 6,
+  },
+  tabBtnSelected: {
+    backgroundColor: Palette.navy950,
+  },
+  tabBtnText: {
+    ...Typography.caption,
+    fontSize: 12,
+    fontWeight: '600',
+    color: Palette.neutral600,
+  },
+  tabBtnTextSelected: {
+    color: Palette.pureWhite,
+    fontWeight: '700',
+  },
+  tabCountBadge: {
+    backgroundColor: Palette.neutral200,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  tabCountBadgeSelected: {
+    backgroundColor: Palette.primary600,
+  },
+  tabCountBadgeText: {
+    ...Typography.caption,
+    fontSize: 10,
+    fontWeight: '700',
+    color: Palette.navy900,
+  },
+  tabCountBadgeTextSelected: {
+    color: Palette.pureWhite,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    ...Typography.bodySmall,
+    color: Palette.neutral500,
+  },
+  emptyWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: Spacing.xl,
+  },
+  listContent: {
+    paddingBottom: Spacing.xxl * 2,
+    paddingTop: Spacing.xs,
+  },
+});

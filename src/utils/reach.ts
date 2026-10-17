@@ -42,6 +42,11 @@ export function estimateDirectReach(advertisingBudget: number): { min: number; m
 }
 
 /**
+ * Unified alias for impression estimation.
+ */
+export const estimateImpressions = estimateDirectReach;
+
+/**
  * Central reach estimation utility.
  * Calculates advertising allocation from total funding goal first,
  * then calculates impression estimates based on advertising allocation.

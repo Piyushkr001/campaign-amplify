@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
@@ -16,6 +16,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { formatCurrency } from '@/utils/formatters';
+import { Config } from '@/constants/config';
 
 const STEP_ROUTES: Record<number, string> = {
   1: '/create-campaign/basics',
@@ -69,7 +70,7 @@ export default function CreateEntryScreen() {
 
   const handleResumeDraft = () => {
     const targetRoute = STEP_ROUTES[draft.currentStep] || '/create-campaign/basics';
-    router.push(targetRoute as any);
+    router.push(targetRoute as Href);
   };
 
   return (
@@ -226,7 +227,7 @@ export default function CreateEntryScreen() {
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Palette.success600} />
             <Text style={styles.checkText}>
-              Transparent distribution budget (85% directly into advertising placements)
+              Transparent distribution budget ({Config.feeStructure.advertisingPercentage}% directly into advertising placements)
             </Text>
           </View>
           <View style={styles.checkItem}>

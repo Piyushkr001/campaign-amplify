@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
@@ -22,6 +22,7 @@ import {
 } from '@/utils/formatters';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { AppButton } from '@/components/ui/AppButton';
+import { canBackCampaign } from '@/constants/campaign-status';
 
 export interface CampaignCardProps {
   campaign: Campaign;
@@ -39,11 +40,20 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
     campaign.goal
   );
 
+  const isBackable = canBackCampaign(campaign);
+  const buttonTitle = isBackable
+    ? 'Back This Campaign'
+    : campaign.status === 'PROMOTING'
+    ? 'View Distribution'
+    : campaign.status === 'COMPLETED'
+    ? 'View Final Report'
+    : 'View Campaign';
+
   const handlePress = () => {
     if (onPress) {
       onPress();
     } else {
-      router.push(`/campaign/${campaign.id}` as any);
+      router.push(`/campaign/${campaign.id}` as Href);
     }
   };
 
@@ -142,12 +152,18 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
         {/* Action Button Wrapper */}
         <View style={styles.actionContainer} pointerEvents="none">
           <AppButton
-            title="Back This Campaign"
+            title={buttonTitle}
             onPress={handlePress}
-            variant="primary"
+            variant={isBackable ? 'primary' : 'outline'}
             size="md"
             fullWidth
-            icon={<Ionicons name="arrow-forward" size={16} color={Palette.pureWhite} />}
+            icon={
+              <Ionicons
+                name={isBackable ? 'arrow-forward' : 'eye-outline'}
+                size={16}
+                color={isBackable ? Palette.pureWhite : Palette.navy900}
+              />
+            }
             iconPosition="right"
           />
         </View>

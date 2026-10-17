@@ -23,6 +23,7 @@ import {
   formatReachRange,
 } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
+import { Config } from '@/constants/config';
 
 export default function ContributionReviewScreen() {
   const router = useRouter();
@@ -104,7 +105,9 @@ export default function ContributionReviewScreen() {
             <View style={styles.tableRowTitleGroup}>
               <View style={[styles.dotIndicator, { backgroundColor: Palette.primary600 }]} />
               <View>
-                <Text style={styles.rowTitle}>Advertising Allocation (85%)</Text>
+                <Text style={styles.rowTitle}>
+                  Advertising Allocation ({Config.feeStructure.advertisingPercentage}%)
+                </Text>
                 <Text style={styles.rowDesc}>Direct media buying on Meta & Google Ads</Text>
               </View>
             </View>
@@ -115,7 +118,9 @@ export default function ContributionReviewScreen() {
             <View style={styles.tableRowTitleGroup}>
               <View style={[styles.dotIndicator, { backgroundColor: Palette.neutral500 }]} />
               <View>
-                <Text style={styles.rowTitle}>Platform Fee (10%)</Text>
+                <Text style={styles.rowTitle}>
+                  Platform Fee ({Config.feeStructure.platformFeePercentage}%)
+                </Text>
                 <Text style={styles.rowDesc}>Message review & infrastructure</Text>
               </View>
             </View>
@@ -126,7 +131,9 @@ export default function ContributionReviewScreen() {
             <View style={styles.tableRowTitleGroup}>
               <View style={[styles.dotIndicator, { backgroundColor: Palette.neutral400 }]} />
               <View>
-                <Text style={styles.rowTitle}>Payment Processing (5%)</Text>
+                <Text style={styles.rowTitle}>
+                  Payment Processing ({Config.feeStructure.paymentProcessingPercentage}%)
+                </Text>
                 <Text style={styles.rowDesc}>Merchant banking & processing fees</Text>
               </View>
             </View>
@@ -185,7 +192,7 @@ export default function ContributionReviewScreen() {
       <View style={styles.policyCard}>
         <Text style={styles.policyTitle}>Demo Simulation Policy</Text>
         <Text style={styles.policyText}>
-          In this prototype demo, payments are simulated. No real credit card charges will occur. Successful contributions locally update campaign funding totals and issue a verifiable receipt.
+          In this prototype demo, payments are simulated. No real credit card charges will occur. Successful contributions locally update campaign funding totals and issue a demo contribution receipt.
         </Text>
       </View>
 

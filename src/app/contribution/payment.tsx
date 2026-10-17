@@ -38,8 +38,10 @@ export default function SimulatedPaymentScreen() {
     createContribution,
     createPayment,
     updatePaymentStatus,
+    updateContributionStatus,
     completeContribution,
     failContribution,
+    cancelContribution,
   } = useContributionStore();
 
   const contributionAmount = amount
@@ -53,8 +55,8 @@ export default function SimulatedPaymentScreen() {
   const [cvv, setCvv] = useState('');
   const [cardholderName, setCardholderName] = useState('');
 
-  // Demo simulation choice: success vs failure
-  const [simulateOutcome, setSimulateOutcome] = useState<'SUCCESS' | 'FAILED'>('SUCCESS');
+  // Demo simulation choice: success vs failure vs cancel
+  const [simulateOutcome, setSimulateOutcome] = useState<'SUCCESS' | 'FAILED' | 'CANCELLED'>('SUCCESS');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -94,21 +96,30 @@ export default function SimulatedPaymentScreen() {
     const newErrors: Record<string, string> = {};
     const digitsOnly = cardNumber.replace(/\s/g, '');
 
-    if (digitsOnly.length < 15) {
-      newErrors.cardNumber = 'Please enter a valid 16-digit card number';
+    // Strict 16-digit demo card requirement
+    if (digitsOnly.length !== 16) {
+      newErrors.cardNumber = 'Please enter an exact 16-digit demo card number';
     }
 
     if (!expiry || expiry.length < 5) {
       newErrors.expiry = 'MM/YY required';
     } else {
-      const [mm] = expiry.split('/').map((s) => parseInt(s, 10));
+      const [mmStr, yyStr] = expiry.split('/');
+      const mm = parseInt(mmStr, 10);
+      const yy = parseInt(yyStr, 10);
+      const now = new Date();
+      const currentYear = now.getFullYear() % 100;
+      const currentMonth = now.getMonth() + 1;
+
       if (isNaN(mm) || mm < 1 || mm > 12) {
         newErrors.expiry = 'Invalid month (01-12)';
+      } else if (isNaN(yy) || yy < currentYear || (yy === currentYear && mm < currentMonth)) {
+        newErrors.expiry = 'Card is expired';
       }
     }
 
-    if (!cvv || cvv.length < 3) {
-      newErrors.cvv = '3-4 digits';
+    if (!cvv || cvv.length < 3 || cvv.length > 4) {
+      newErrors.cvv = '3-4 digits required';
     }
 
     setErrors(newErrors);
@@ -142,7 +153,7 @@ export default function SimulatedPaymentScreen() {
       });
     }
 
-    // Create payment record with masked last 4 only
+    // 1. Create payment record (PENDING) with masked safe metadata only (never save card number or CVV)
     const cardLast4 = cardNumber.replace(/\s/g, '').slice(-4) || '4242';
     const payment = createPayment(
       activeContribution.id,
@@ -151,24 +162,27 @@ export default function SimulatedPaymentScreen() {
       cardLast4
     );
 
-    // Simulate gateway round-trip delay
+    // 2. Transition BOTH payment and contribution to PROCESSING
+    updatePaymentStatus(payment.id, 'PROCESSING');
+    updateContributionStatus(activeContribution.id, 'PROCESSING');
+
+    // 3. Simulate gateway round-trip delay
     setTimeout(() => {
       if (simulateOutcome === 'SUCCESS') {
-        // 1. Mark payment as SUCCESS
+        // Mark payment as SUCCESS
         updatePaymentStatus(payment.id, 'SUCCESS');
 
-        // 2. Mark contribution as SUCCESS with payment reference
+        // Mark contribution as SUCCESS with payment reference
         completeContribution(activeContribution.id, payment.reference);
 
-        // 3. Update campaign funding locally ONLY upon SUCCESS!
+        // Update campaign funding locally ONLY upon SUCCESS!
         useCampaignFundingStore.getState().addFunding(campaignId || '', contributionAmount);
 
-        // 4. Invalidate TanStack query cache so all screens reflect new funding
+        // Invalidate TanStack query cache so all screens reflect new funding
         queryClient.invalidateQueries({ queryKey: ['campaigns'] });
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-        // 5. Navigate to success
         router.replace({
           pathname: '/contribution/success',
           params: {
@@ -176,7 +190,7 @@ export default function SimulatedPaymentScreen() {
             contributionId: activeContribution.id,
           },
         });
-      } else {
+      } else if (simulateOutcome === 'FAILED') {
         // Payment failed simulation
         updatePaymentStatus(
           payment.id,
@@ -186,6 +200,25 @@ export default function SimulatedPaymentScreen() {
         failContribution(activeContribution.id);
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+
+        router.replace({
+          pathname: '/contribution/failed',
+          params: {
+            paymentId: payment.id,
+            contributionId: activeContribution.id,
+            campaignId: campaignId || '',
+          },
+        });
+      } else {
+        // CANCELLED simulation: funding is NOT touched!
+        updatePaymentStatus(
+          payment.id,
+          'CANCELLED',
+          'Simulated payment was cancelled by contributor.'
+        );
+        cancelContribution(activeContribution.id);
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 
         router.replace({
           pathname: '/contribution/failed',
@@ -310,7 +343,7 @@ export default function SimulatedPaymentScreen() {
         <View style={styles.simulationCard}>
           <Text style={styles.simTitle}>Demo Simulation Controls</Text>
           <Text style={styles.simDesc}>
-            Choose whether the simulated transaction responds with Success or Failure:
+            Choose how the simulated sandbox transaction should respond:
           </Text>
 
           <View style={styles.simButtonsRow}>
@@ -324,7 +357,7 @@ export default function SimulatedPaymentScreen() {
               ]}>
               <Ionicons
                 name="checkmark-circle"
-                size={16}
+                size={14}
                 color={simulateOutcome === 'SUCCESS' ? Palette.success700 : Palette.neutral500}
               />
               <Text
@@ -332,7 +365,7 @@ export default function SimulatedPaymentScreen() {
                   styles.simBtnText,
                   simulateOutcome === 'SUCCESS' && styles.simBtnTextActiveSuccess,
                 ]}>
-                Simulate Success
+                Success
               </Text>
             </Pressable>
 
@@ -346,7 +379,7 @@ export default function SimulatedPaymentScreen() {
               ]}>
               <Ionicons
                 name="close-circle"
-                size={16}
+                size={14}
                 color={simulateOutcome === 'FAILED' ? Palette.error600 : Palette.neutral500}
               />
               <Text
@@ -354,7 +387,29 @@ export default function SimulatedPaymentScreen() {
                   styles.simBtnText,
                   simulateOutcome === 'FAILED' && styles.simBtnTextActiveFail,
                 ]}>
-                Simulate Failure
+                Decline
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setSimulateOutcome('CANCELLED')}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: simulateOutcome === 'CANCELLED' }}
+              style={[
+                styles.simBtn,
+                simulateOutcome === 'CANCELLED' && styles.simBtnActiveCancel,
+              ]}>
+              <Ionicons
+                name="stop-circle-outline"
+                size={14}
+                color={simulateOutcome === 'CANCELLED' ? Palette.amber600 : Palette.neutral500}
+              />
+              <Text
+                style={[
+                  styles.simBtnText,
+                  simulateOutcome === 'CANCELLED' && styles.simBtnTextActiveCancel,
+                ]}>
+                Cancel
               </Text>
             </Pressable>
           </View>
@@ -552,6 +607,10 @@ const styles = StyleSheet.create({
     borderColor: Palette.error600,
     backgroundColor: Palette.error50,
   },
+  simBtnActiveCancel: {
+    borderColor: Palette.amber600,
+    backgroundColor: Palette.amber50,
+  },
   simBtnText: {
     ...Typography.caption,
     fontSize: 11,
@@ -564,6 +623,10 @@ const styles = StyleSheet.create({
   },
   simBtnTextActiveFail: {
     color: Palette.error600,
+    fontWeight: '700',
+  },
+  simBtnTextActiveCancel: {
+    color: Palette.amber600,
     fontWeight: '700',
   },
   summaryLineCard: {

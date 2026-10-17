@@ -49,6 +49,27 @@ export default function RootLayout() {
               presentation: 'card',
             }}
           />
+          <Stack.Screen
+            name="my-campaigns"
+            options={{
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
+          <Stack.Screen
+            name="reviewer"
+            options={{
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
+          <Stack.Screen
+            name="report/[id]"
+            options={{
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
         </Stack>
       </SafeAreaProvider>
     </QueryClientProvider>

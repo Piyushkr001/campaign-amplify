@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queryClient } from '@/services/query-client';
 
 export interface CampaignFundingAdjustment {
   raisedAdjustment: number;
@@ -54,6 +55,10 @@ export const useCampaignFundingStore = create<CampaignFundingStore>()(
     {
       name: 'campaign-amplify-funding-adjustments',
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => () => {
+        // On cold-start hydration, invalidate campaign queries so amounts update immediately
+        queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      },
     }
   )
 );

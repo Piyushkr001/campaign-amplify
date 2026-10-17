@@ -14,18 +14,49 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { useAuthStore } from '@/store/auth-store';
 
+import { router } from 'expo-router';
+
 export default function ProfileScreen() {
   const { user } = useAuthStore();
+
+  const handleInfoModal = (title: string, message: string) => {
+    Alert.alert(title, message, [{ text: 'Close' }]);
+  };
 
   const handleAuthPlaceholder = (action: string) => {
     Alert.alert(
       `${action} (Phase 2)`,
-      'User accounts, authentication, and contributor dashboards are coming in the next release phase.',
+      'User accounts, authentication, and contributor dashboards are coming in a future release phase.',
       [{ text: 'Got It' }]
     );
   };
 
-  const menuSections = [
+  const accountSections = [
+    {
+      title: 'Creator & Review Management',
+      items: [
+        {
+          icon: 'folder-outline' as const,
+          label: 'My Campaigns',
+          subtitle: 'Manage drafts, review status, funding, and distribution',
+          onPress: () => router.push('/my-campaigns'),
+          badge: 'Creator',
+        },
+        {
+          icon: 'shield-checkmark-outline' as const,
+          label: 'Reviewer Demo',
+          subtitle: 'Internal prototype: inspect claims, approve, request changes',
+          onPress: () => router.push('/reviewer'),
+          badge: 'Demo Desk',
+        },
+        {
+          icon: 'receipt-outline' as const,
+          label: 'Backed Campaigns & Receipts',
+          subtitle: 'View your contribution history and demo receipts',
+          onPress: () => router.push('/(tabs)/activity'),
+        },
+      ],
+    },
     {
       title: 'Platform Information',
       items: [
@@ -33,16 +64,31 @@ export default function ProfileScreen() {
           icon: 'information-circle-outline' as const,
           label: 'How Amplification Works',
           subtitle: 'Learn about community message distribution vs donations',
+          onPress: () =>
+            handleInfoModal(
+              'How Amplification Works',
+              'Campaign Amplify pools community funds exclusively for targeted digital ad placements to spread important public messages, research, and civic blueprints. Contributions directly buy impressions rather than donating cash.'
+            ),
         },
         {
-          icon: 'shield-checkmark-outline' as const,
+          icon: 'checkmark-circle-outline' as const,
           label: 'Verification & Editorial Standards',
           subtitle: 'Our vetting criteria for campaigns and citations',
+          onPress: () =>
+            handleInfoModal(
+              'Editorial Standards',
+              'Every campaign must cite verifiable public sources or peer-reviewed research. Reviewers inspect claims and ensure neutrality before any campaign enters funding.'
+            ),
         },
         {
           icon: 'newspaper-outline' as const,
           label: 'Advertising Guidelines',
           subtitle: 'Content rules and publisher compliance standards',
+          onPress: () =>
+            handleInfoModal(
+              'Advertising Guidelines',
+              'All ads must adhere to ad network policies (Meta, Google Display). Deceptive claims, harassment, or commercial solicitations disguised as public messages are strictly rejected.'
+            ),
         },
       ],
     },
@@ -53,11 +99,21 @@ export default function ProfileScreen() {
           icon: 'help-circle-outline' as const,
           label: 'Help & FAQ',
           subtitle: 'Frequently asked questions about backing and reach',
+          onPress: () =>
+            handleInfoModal(
+              'Help & FAQ',
+              'Q: Can I get a refund? A: If a campaign does not meet its funding goal or distribution is cancelled, funds are reversed. Contact support@campaignamplify.org for assistance.'
+            ),
         },
         {
           icon: 'lock-closed-outline' as const,
           label: 'Privacy Policy & Terms',
           subtitle: 'How we handle data and contributor privacy',
+          onPress: () =>
+            handleInfoModal(
+              'Privacy & Terms',
+              'We never store unencrypted payment credentials. Card numbers and CVVs are processed through secure sandbox endpoints. Contributor data is kept private.'
+            ),
         },
       ],
     },
@@ -108,14 +164,14 @@ export default function ProfileScreen() {
       </View>
 
       {/* Menu Settings Sections */}
-      {menuSections.map((section, idx) => (
+      {accountSections.map((section, idx) => (
         <View key={idx} style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>{section.title}</Text>
           <View style={styles.menuCard}>
             {section.items.map((item, itemIdx) => (
               <Pressable
                 key={itemIdx}
-                onPress={() => handleAuthPlaceholder(item.label)}
+                onPress={item.onPress}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
                 style={({ pressed }) => [
@@ -127,7 +183,14 @@ export default function ProfileScreen() {
                   <Ionicons name={item.icon} size={18} color={Palette.navy800} />
                 </View>
                 <View style={styles.menuTextContainer}>
-                  <Text style={styles.menuItemLabel}>{item.label}</Text>
+                  <View style={styles.menuLabelRow}>
+                    <Text style={styles.menuItemLabel}>{item.label}</Text>
+                    {'badge' in item && item.badge ? (
+                      <View style={styles.itemBadge}>
+                        <Text style={styles.itemBadgeText}>{item.badge}</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={styles.menuItemSub}>{item.subtitle}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={Palette.neutral400} />
@@ -258,11 +321,31 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: Spacing.sm,
   },
+  menuLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  itemBadge: {
+    backgroundColor: Palette.primary50,
+    borderColor: Palette.primary100,
+    borderWidth: 1,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  itemBadgeText: {
+    ...Typography.caption,
+    fontSize: 9,
+    fontWeight: '700',
+    color: Palette.primary700,
+    textTransform: 'uppercase',
+  },
   menuItemLabel: {
     ...Typography.bodySmall,
     fontWeight: '600',
     color: Palette.navy950,
-    marginBottom: 2,
   },
   menuItemSub: {
     ...Typography.caption,

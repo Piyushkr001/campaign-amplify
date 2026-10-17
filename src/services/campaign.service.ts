@@ -3,6 +3,7 @@ import { Campaign } from '@/types/campaign';
 import { CategoryName } from '@/constants/categories';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { useCampaignFundingStore } from '@/store/campaign-funding-store';
+import { isPublicCampaign } from '@/constants/campaign-status';
 
 export interface CampaignFilterOptions {
   category?: CategoryName;
@@ -36,7 +37,10 @@ export const CampaignService = {
       }
     });
 
-    let list = Array.from(combinedMap.values()).map(applyFundingAdjustments);
+    // CRITICAL: Filter for public campaign statuses only (FUNDING, PROMOTING, COMPLETED)
+    let list = Array.from(combinedMap.values())
+      .filter(isPublicCampaign)
+      .map(applyFundingAdjustments);
 
     if (options?.category && options.category !== 'All') {
       list = list.filter((c) => c.category === options.category);

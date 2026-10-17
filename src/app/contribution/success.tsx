@@ -23,6 +23,9 @@ import {
   formatReachRange,
 } from '@/utils/formatters';
 
+import { Config } from '@/constants/config';
+import { EmptyState } from '@/components/ui/EmptyState';
+
 export default function ContributionSuccessScreen() {
   const router = useRouter();
   const { paymentId, contributionId } = useLocalSearchParams<{
@@ -34,15 +37,55 @@ export default function ContributionSuccessScreen() {
 
   const contribution = contributionId ? getContributionById(contributionId) : undefined;
   const payment = paymentId ? getPaymentById(paymentId) : undefined;
-  const campaignId = contribution?.campaignId || payment?.campaignId || '';
 
+  // Strict validation: Require actual contribution with SUCCESS status
+  const isTransactionValid =
+    contribution &&
+    contribution.status === 'SUCCESS' &&
+    (!payment || payment.status === 'SUCCESS');
+
+  const campaignId = contribution?.campaignId || payment?.campaignId || '';
   const { data: campaign } = useCampaign(campaignId);
 
-  const referenceCode = payment?.reference || contribution?.paymentReference || 'DEMO-AMP-849201';
-  const amount = contribution?.amount || payment?.amount || 50;
-  const adBudget = contribution?.advertisingAllocation || Math.round(amount * 0.85);
-  const minImpressions = contribution?.estimatedImpressionsMin || Math.round(adBudget * 20);
-  const maxImpressions = contribution?.estimatedImpressionsMax || Math.round(adBudget * 30);
+  if (!isTransactionValid) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navBar}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="alert-circle-outline"
+          title="Transaction Not Found"
+          description="We could not locate a completed, verified contribution transaction for this session."
+          actionTitle="Explore Active Campaigns"
+          onAction={() => router.replace('/(tabs)/explore')}
+        />
+        <View style={styles.notFoundActions}>
+          {campaignId ? (
+            <AppButton
+              title="Return to Campaign"
+              onPress={() => router.replace(`/campaign/${campaignId}`)}
+              variant="outline"
+              size="md"
+              fullWidth
+            />
+          ) : null}
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  const referenceCode = payment?.reference || contribution.paymentReference || 'N/A';
+  const amount = contribution.amount;
+  const adBudget = contribution.advertisingAllocation;
+  const minImpressions = contribution.estimatedImpressionsMin;
+  const maxImpressions = contribution.estimatedImpressionsMax;
 
   const goal = campaign?.goal || 2500;
   const raised = campaign?.raised || amount;
@@ -62,8 +105,8 @@ export default function ContributionSuccessScreen() {
     router.push({
       pathname: '/contribution/receipt',
       params: {
-        contributionId: contribution?.id || contributionId || '',
-        paymentId: payment?.id || paymentId || '',
+        contributionId: contribution.id,
+        paymentId: payment?.id || '',
       },
     });
   };
@@ -106,7 +149,7 @@ export default function ContributionSuccessScreen() {
           <View style={styles.summaryItem}>
             <Text style={styles.itemLabel}>Campaign</Text>
             <Text style={styles.itemValue} numberOfLines={2}>
-              {campaign?.title || contribution?.campaignTitle || 'Community Message Amplification'}
+              {campaign?.title || contribution.campaignTitle || 'Community Message Amplification'}
             </Text>
           </View>
 
@@ -119,7 +162,9 @@ export default function ContributionSuccessScreen() {
 
           <View style={styles.summaryItem}>
             <Text style={styles.itemLabel}>Direct Advertising Allocation</Text>
-            <Text style={styles.itemHighlight}>{formatCurrency(adBudget)} (85%)</Text>
+            <Text style={styles.itemHighlight}>
+              {formatCurrency(adBudget)} ({Config.feeStructure.advertisingPercentage}%)
+            </Text>
           </View>
 
           <View style={styles.summaryItem}>
@@ -387,5 +432,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: Palette.primary700,
+  },
+  navBar: {
+    paddingVertical: Spacing.sm,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Palette.pureWhite,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notFoundActions: {
+    width: '100%',
+    marginTop: Spacing.md,
   },
 });

@@ -41,6 +41,7 @@ export interface ContributionStore {
     errorMessage?: string
   ) => void;
   completeContribution: (contributionId: string, paymentReference: string) => void;
+  updateContributionStatus: (contributionId: string, status: ContributionStatus) => void;
   failContribution: (contributionId: string) => void;
   cancelContribution: (contributionId: string) => void;
   getContributionById: (id: string) => Contribution | undefined;
@@ -179,6 +180,18 @@ export const useContributionStore = create<ContributionStore>()(
             currentContribution,
           };
         });
+      },
+
+      updateContributionStatus: (contributionId, status) => {
+        set((state) => ({
+          contributions: state.contributions.map((c) =>
+            c.id === contributionId ? { ...c, status } : c
+          ),
+          currentContribution:
+            state.currentContribution?.id === contributionId
+              ? { ...state.currentContribution, status }
+              : state.currentContribution,
+        }));
       },
 
       failContribution: (contributionId) => {

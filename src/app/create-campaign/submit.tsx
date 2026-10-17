@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
@@ -23,6 +23,7 @@ import { CampaignSubmissionPreviewModal } from '@/components/create/CampaignSubm
 import { AdCreativePreview } from '@/components/create/AdCreativePreview';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { Config } from '@/constants/config';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateReach, formatReachEstimate } from '@/utils/reach';
 import {
@@ -101,7 +102,7 @@ export default function CreateSubmitScreen() {
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
-  const promptStepCorrection = (stepName: string, errorMessage: string, route: string) => {
+  const promptStepCorrection = (stepName: string, errorMessage: string, route: Href) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     const title = `${stepName} Section Incomplete`;
     const message = `${errorMessage}\n\nPlease review and complete the ${stepName} section before submitting.`;
@@ -110,12 +111,12 @@ export default function CreateSubmitScreen() {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const proceed = window.confirm(`${title}\n\n${message}\n\nClick OK to open ${buttonText}.`);
       if (proceed) {
-        router.push(route as any);
+        router.push(route);
       }
     } else {
       Alert.alert(title, message, [
         { text: 'Cancel', style: 'cancel' },
-        { text: buttonText, onPress: () => router.push(route as any) },
+        { text: buttonText, onPress: () => router.push(route) },
       ]);
     }
   };
@@ -325,15 +326,21 @@ export default function CreateSubmitScreen() {
           </Text>
 
           <View style={styles.fundRow}>
-            <Text style={styles.fundLabel}>Direct Paid Ad Placement (85%)</Text>
+            <Text style={styles.fundLabel}>
+              Direct Paid Ad Placement ({Config.feeStructure.advertisingPercentage}%)
+            </Text>
             <Text style={styles.fundValue}>{formatCurrency(funds.advertising)}</Text>
           </View>
           <View style={styles.fundRow}>
-            <Text style={styles.fundLabel}>Platform Operations & Review (10%)</Text>
+            <Text style={styles.fundLabel}>
+              Platform Operations & Review ({Config.feeStructure.platformFeePercentage}%)
+            </Text>
             <Text style={styles.fundValue}>{formatCurrency(funds.platformFee)}</Text>
           </View>
           <View style={styles.fundRow}>
-            <Text style={styles.fundLabel}>Payment Processing (5%)</Text>
+            <Text style={styles.fundLabel}>
+              Payment Processing ({Config.feeStructure.paymentProcessingPercentage}%)
+            </Text>
             <Text style={styles.fundValue}>{formatCurrency(funds.paymentProcessing)}</Text>
           </View>
         </View>

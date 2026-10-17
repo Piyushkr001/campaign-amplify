@@ -121,12 +121,12 @@ export default function CreateSuccessScreen() {
         <View style={styles.actions}>
           {campaign ? (
             <AppButton
-              title="View Campaign Status"
-              onPress={() => setShowStatusModal(true)}
-              variant="outline"
+              title="View in Creator Dashboard"
+              onPress={() => router.push(`/my-campaigns/${campaign.id}`)}
+              variant="primary"
               size="lg"
               fullWidth
-              icon={<Ionicons name="receipt-outline" size={18} color={Palette.navy900} />}
+              icon={<Ionicons name="folder-outline" size={18} color={Palette.pureWhite} />}
             />
           ) : null}
 
@@ -134,18 +134,18 @@ export default function CreateSuccessScreen() {
             title="Create Another Campaign"
             onPress={handleCreateAnother}
             variant="secondary"
-            size="lg"
+            size="md"
             fullWidth
-            icon={<Ionicons name="add-circle-outline" size={18} color={Palette.navy900} />}
+            icon={<Ionicons name="add-circle-outline" size={16} color={Palette.navy900} />}
           />
 
           <AppButton
-            title="Go Home"
+            title="Return to Home"
             onPress={handleGoHome}
-            variant="primary"
-            size="lg"
+            variant="outline"
+            size="md"
             fullWidth
-            icon={<Ionicons name="home-outline" size={18} color={Palette.pureWhite} />}
+            icon={<Ionicons name="home-outline" size={16} color={Palette.navy900} />}
           />
         </View>
       </View>

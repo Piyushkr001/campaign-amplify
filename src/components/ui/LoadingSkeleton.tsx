@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import {
   Animated,
+  DimensionValue,
   Platform,
   StyleProp,
   StyleSheet,
@@ -11,7 +12,7 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 
 export interface SkeletonBoxProps {
-  width?: number | `${number}%` | 'auto';
+  width?: DimensionValue;
   height?: number;
   borderRadius?: number;
   style?: StyleProp<ViewStyle>;
@@ -50,7 +51,7 @@ export const SkeletonBox: React.FC<SkeletonBoxProps> = ({
       style={[
         styles.skeletonBase,
         {
-          width: width as any,
+          width,
           height,
           borderRadius,
           opacity,
