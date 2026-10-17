@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -8,36 +9,145 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
+import { AppInput } from '@/components/ui/AppInput';
+import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator';
+import { AdCreativePreview } from '@/components/create/AdCreativePreview';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { CampaignVisualsSchema } from '@/schemas/campaign.schema';
+import { pickImageFromLibrary } from '@/utils/image-picker';
 
-const SAMPLE_COVERS = [
-  'https://images.unsplash.com/photo-1541252260730-0412e8e2108e?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=800&q=80',
-];
+const CTA_OPTIONS = ['Learn More', 'Read Report', 'Support Message', 'Take Action', 'View Findings'];
 
 export default function CreateVisualsScreen() {
   const router = useRouter();
-  const draft = useCampaignDraftStore();
+  const {
+    draft,
+    updateField,
+    updateFields,
+    setCurrentStep,
+    saveAsDraft,
+    lastSavedAt,
+    isSaving,
+  } = useCampaignDraftStore();
 
-  const [selectedImage, setSelectedImage] = useState<string>(
-    draft.coverImage || SAMPLE_COVERS[0]
+  const [coverImage, setCoverImage] = useState<string | undefined>(draft.coverImage);
+  const [adImage, setAdImage] = useState<string | undefined>(draft.adImage || draft.coverImage);
+  const [adHeadline, setAdHeadline] = useState(
+    draft.adHeadline || (draft.title ? draft.title.slice(0, 60) : '')
   );
+  const [adDescription, setAdDescription] = useState(
+    draft.adDescription || (draft.summary ? draft.summary.slice(0, 150) : '')
+  );
+  const [adCTA, setAdCTA] = useState(draft.adCTA || 'Learn More');
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
+
+  // Sync draft rehydration
+  useEffect(() => {
+    if (draft.coverImage && !coverImage) setCoverImage(draft.coverImage);
+    if (draft.adImage && !adImage) setAdImage(draft.adImage);
+    if (draft.adHeadline && !adHeadline) setAdHeadline(draft.adHeadline);
+    if (draft.adDescription && !adDescription) setAdDescription(draft.adDescription);
+  }, [draft]);
+
+  // Navigation guard
+  useEffect(() => {
+    if (!draft.title && !draft.summary) {
+      router.replace('/create-campaign/basics');
+    }
+  }, [draft.title, draft.summary, router]);
+
+  const handlePickCoverImage = async () => {
+    const uri = await pickImageFromLibrary();
+    if (uri) {
+      setCoverImage(uri);
+      updateField('coverImage', uri);
+      // Auto-populate ad image if empty
+      if (!adImage) {
+        setAdImage(uri);
+        updateField('adImage', uri);
+      }
+    }
+  };
+
+  const handlePickAdImage = async () => {
+    const uri = await pickImageFromLibrary();
+    if (uri) {
+      setAdImage(uri);
+      updateField('adImage', uri);
+    }
+  };
+
+  const handleUseCoverAsAdImage = () => {
+    if (coverImage) {
+      setAdImage(coverImage);
+      updateField('adImage', coverImage);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    updateFields({
+      coverImage,
+      adImage,
+      adHeadline,
+      adDescription,
+      adCTA,
+    });
+    saveAsDraft();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setSaveBannerText('Visuals & Ad draft saved');
+    setTimeout(() => setSaveBannerText(null), 3000);
+  };
 
   const handleNext = () => {
-    draft.updateField('coverImage', selectedImage);
-    draft.setCurrentStep(4);
+    const result = CampaignVisualsSchema.safeParse({
+      coverImage,
+      adImage,
+      adHeadline,
+      adDescription,
+      adCTA,
+    });
+
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        const fieldName = issue.path[0]?.toString() || 'general';
+        fieldErrors[fieldName] = issue.message;
+      });
+      setErrors(fieldErrors);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+
+    setErrors({});
+    updateFields({
+      coverImage,
+      adImage,
+      adHeadline,
+      adDescription,
+      adCTA,
+      currentStep: 4,
+    });
+    setCurrentStep(4);
     router.push('/create-campaign/reach');
   };
 
   return (
     <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+      {/* Step Indicator */}
+      <CampaignStepIndicator
+        currentStep={3}
+        lastSavedAt={lastSavedAt}
+        isSaving={isSaving}
+        onSaveDraft={handleSaveDraft}
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <Pressable
@@ -45,66 +155,202 @@ export default function CreateVisualsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back to step 2"
           hitSlop={8}
-          style={styles.backBtn}>
+          style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}>
           <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
         </Pressable>
-        <Text style={styles.stepIndicator}>Step 3 of 5: Visuals</Text>
-      </View>
-
-      <Text style={styles.pageTitle}>Campaign & Ad Visuals</Text>
-      <Text style={styles.pageSubtitle}>
-        Choose high-resolution imagery for your campaign cover and digital advertising creatives.
-      </Text>
-
-      {/* Selected Cover Preview */}
-      <View style={styles.previewContainer}>
-        <Image
-          source={{ uri: selectedImage }}
-          style={styles.previewImage}
-          contentFit="cover"
-          transition={200}
-        />
-        <View style={styles.previewBadge}>
-          <Text style={styles.previewBadgeText}>Active Creative Preview</Text>
+        <View style={styles.headerTitles}>
+          <Text style={styles.pageTitle}>Campaign & Ad Visuals</Text>
+          <Text style={styles.pageSubtitle}>
+            Configure your campaign cover and the paid advertising creative shown in external feeds.
+          </Text>
         </View>
       </View>
 
-      {/* Preset Visuals Selector */}
-      <Text style={styles.selectorHeading}>Select a High-Res Cover Visual</Text>
-      <View style={styles.grid}>
-        {SAMPLE_COVERS.map((url, idx) => (
+      {/* Save Banner */}
+      {saveBannerText && (
+        <View style={styles.saveBanner}>
+          <Ionicons name="checkmark-circle" size={16} color={Palette.success600} />
+          <Text style={styles.saveBannerText}>{saveBannerText}</Text>
+        </View>
+      )}
+
+      {/* SECTION 1: Campaign Page Visual */}
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={styles.sectionTitle}>1. Campaign Cover Visual</Text>
+            <Text style={styles.sectionSubtitle}>
+              Displayed prominently at the top of your public campaign details page.
+            </Text>
+          </View>
+        </View>
+
+        {coverImage ? (
+          <View style={styles.coverPreviewContainer}>
+            <Image source={{ uri: coverImage }} style={styles.coverPreview} contentFit="cover" />
+            <Pressable
+              onPress={handlePickCoverImage}
+              style={styles.replaceBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Replace campaign cover image">
+              <Ionicons name="camera" size={13} color={Palette.pureWhite} />
+              <Text style={styles.replaceBtnText}>Replace Cover</Text>
+            </Pressable>
+          </View>
+        ) : (
           <Pressable
-            key={idx}
-            onPress={() => setSelectedImage(url)}
+            onPress={handlePickCoverImage}
             accessibilityRole="button"
-            accessibilityLabel={`Choose visual option ${idx + 1}`}
-            style={[
-              styles.thumbnailWrapper,
-              selectedImage === url && styles.thumbnailSelected,
-            ]}>
-            <Image source={{ uri: url }} style={styles.thumbnail} contentFit="cover" />
-            {selectedImage === url && (
-              <View style={styles.checkIconBadge}>
-                <Ionicons name="checkmark" size={14} color={Palette.pureWhite} />
-              </View>
-            )}
+            accessibilityLabel="Select campaign cover image"
+            style={({ pressed }) => [styles.uploadBox, pressed && styles.btnPressed]}>
+            <Ionicons name="image-outline" size={26} color={Palette.primary700} />
+            <Text style={styles.uploadTitle}>Select Campaign Cover</Text>
+            <Text style={styles.uploadSubtitle}>Choose high-resolution image from your photo library</Text>
           </Pressable>
-        ))}
+        )}
       </View>
 
-      {/* Guidelines Note */}
-      <View style={styles.noteCard}>
-        <Ionicons name="information-circle-outline" size={16} color={Palette.primary700} />
-        <Text style={styles.noteText}>
-          Images must not contain sensationalist text overlays, deceptive clickbait framing, or
-          copyrighted brand marks.
+      {/* SECTION 2: Advertising Creative Fields */}
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={styles.sectionTitle}>2. Advertising Creative Specification</Text>
+            <Text style={styles.sectionSubtitle}>
+              The concise visual and copy formatted for Meta feeds, Google display cards, and publisher networks.
+            </Text>
+          </View>
+        </View>
+
+        {/* Ad Image Picker */}
+        <View style={styles.fieldHeaderRow}>
+          <Text style={styles.fieldLabel}>Ad Creative Image *</Text>
+          {coverImage && adImage !== coverImage ? (
+            <Pressable onPress={handleUseCoverAsAdImage} hitSlop={6}>
+              <Text style={styles.actionLinkText}>Use Campaign Cover</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {adImage ? (
+          <View style={styles.adImagePreviewContainer}>
+            <Image source={{ uri: adImage }} style={styles.adImagePreview} contentFit="cover" />
+            <Pressable
+              onPress={handlePickAdImage}
+              style={styles.replaceBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Replace ad creative image">
+              <Ionicons name="camera" size={13} color={Palette.pureWhite} />
+              <Text style={styles.replaceBtnText}>Change Image</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={handlePickAdImage}
+            accessibilityRole="button"
+            accessibilityLabel="Pick ad creative image"
+            style={({ pressed }) => [styles.uploadBox, pressed && styles.btnPressed]}>
+            <Ionicons name="megaphone-outline" size={26} color={Palette.primary700} />
+            <Text style={styles.uploadTitle}>Choose Ad Creative Image</Text>
+            <Text style={styles.uploadSubtitle}>1.91:1 landscape or 1:1 square image</Text>
+          </Pressable>
+        )}
+
+        {/* Ad Headline */}
+        <View style={styles.fieldHeaderRow}>
+          <Text style={styles.fieldLabel}>Ad Headline *</Text>
+          <Text style={styles.charCounter}>{adHeadline.length} / 60</Text>
+        </View>
+        <AppInput
+          placeholder="e.g. Why Rural Water Infrastructure Needs Urgent Attention"
+          value={adHeadline}
+          onChangeText={(val) => {
+            const trimmed = val.slice(0, 60);
+            setAdHeadline(trimmed);
+            updateField('adHeadline', trimmed);
+            if (errors.adHeadline) setErrors((prev) => ({ ...prev, adHeadline: '' }));
+          }}
+          maxLength={60}
+          error={errors.adHeadline}
+          hint="Clear, punchy headline to capture attention in feeds (max 60 chars)."
+        />
+
+        {/* Ad Description */}
+        <View style={styles.fieldHeaderRow}>
+          <Text style={styles.fieldLabel}>Ad Description / Body *</Text>
+          <Text style={styles.charCounter}>{adDescription.length} / 150</Text>
+        </View>
+        <AppInput
+          placeholder="e.g. Back this evidence-supported campaign to distribute verified community findings to regional audiences."
+          value={adDescription}
+          onChangeText={(val) => {
+            const trimmed = val.slice(0, 150);
+            setAdDescription(trimmed);
+            updateField('adDescription', trimmed);
+            if (errors.adDescription) setErrors((prev) => ({ ...prev, adDescription: '' }));
+          }}
+          multiline
+          numberOfLines={3}
+          maxLength={150}
+          error={errors.adDescription}
+          hint="Short, persuasive copy that introduces the topic (max 150 chars)."
+        />
+
+        {/* Call to Action selector */}
+        <Text style={styles.fieldLabel}>Call to Action (CTA) Text *</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.ctaScroll}
+          style={styles.ctaScrollWrapper}>
+          {CTA_OPTIONS.map((opt) => (
+            <Pressable
+              key={opt}
+              onPress={() => {
+                setAdCTA(opt);
+                updateField('adCTA', opt);
+                if (errors.adCTA) setErrors((prev) => ({ ...prev, adCTA: '' }));
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Select call to action: ${opt}`}
+              style={[
+                styles.ctaChip,
+                adCTA === opt && styles.ctaChipActive,
+              ]}>
+              <Text
+                style={[
+                  styles.ctaChipText,
+                  adCTA === opt && styles.ctaChipTextActive,
+                ]}>
+                {opt}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        {errors.adCTA ? <Text style={styles.inlineError}>{errors.adCTA}</Text> : null}
+      </View>
+
+      {/* SECTION 3: Live Creative Preview */}
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>3. Live Creative Preview</Text>
+        <Text style={styles.sectionSubtitle}>
+          How your sponsored community message looks to targeted audiences across mobile devices.
         </Text>
+
+        <View style={styles.previewWrapper}>
+          <AdCreativePreview
+            imageUri={adImage || coverImage}
+            headline={adHeadline}
+            description={adDescription}
+            ctaText={adCTA}
+            sponsorName={draft.creatorName || 'Amplify Campaign'}
+          />
+        </View>
       </View>
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
         <AppButton
-          title="Continue to Reach & Budget (Step 4)"
+          title="Continue to Reach (Step 4)"
           onPress={handleNext}
           variant="primary"
           size="lg"
@@ -120,10 +366,9 @@ export default function CreateVisualsScreen() {
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.xs,
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   backBtn: {
     width: 36,
@@ -134,11 +379,13 @@ const styles = StyleSheet.create({
     borderColor: Palette.neutral200,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
-  stepIndicator: {
-    ...Typography.caption,
-    fontWeight: '700',
-    color: Palette.primary700,
+  btnPressed: {
+    opacity: 0.7,
+  },
+  headerTitles: {
+    flex: 1,
   },
   pageTitle: {
     ...Typography.h1,
@@ -149,92 +396,169 @@ const styles = StyleSheet.create({
   pageSubtitle: {
     ...Typography.bodySmall,
     color: Palette.neutral500,
-    marginBottom: Spacing.lg,
     lineHeight: 18,
   },
-  previewContainer: {
-    width: '100%',
-    height: 190,
+  saveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Palette.success50,
+    borderWidth: 1,
+    borderColor: Palette.success200,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+  },
+  saveBannerText: {
+    ...Typography.bodySmall,
+    color: Palette.success700,
+    fontWeight: '600',
+  },
+  sectionCard: {
+    backgroundColor: Palette.pureWhite,
     borderRadius: BorderRadius.card,
-    overflow: 'hidden',
-    backgroundColor: Palette.neutral200,
-    position: 'relative',
-    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
-  previewImage: {
-    width: '100%',
-    height: '100%',
+  sectionHeaderRow: {
+    marginBottom: Spacing.sm,
   },
-  previewBadge: {
-    position: 'absolute',
-    top: Spacing.sm,
-    left: Spacing.sm,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.pill,
+  sectionTitle: {
+    ...Typography.h3,
+    fontSize: 16,
+    color: Palette.navy950,
+    marginBottom: 2,
   },
-  previewBadgeText: {
+  sectionSubtitle: {
     ...Typography.caption,
-    color: Palette.pureWhite,
-    fontSize: 10,
-    fontWeight: '700',
+    color: Palette.neutral500,
+    lineHeight: 16,
   },
-  selectorHeading: {
+  fieldHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  fieldLabel: {
     ...Typography.bodySmall,
     fontWeight: '600',
     color: Palette.navy900,
+    marginBottom: 4,
+  },
+  charCounter: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Palette.neutral500,
+  },
+  actionLinkText: {
+    ...Typography.caption,
+    color: Palette.primary700,
+    fontWeight: '600',
+  },
+  inlineError: {
+    ...Typography.caption,
+    color: Palette.error600,
     marginBottom: Spacing.sm,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
-  },
-  thumbnailWrapper: {
-    width: '48%',
-    height: 90,
+  coverPreviewContainer: {
+    width: '100%',
+    height: 160,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: Palette.neutral200,
     position: 'relative',
+    backgroundColor: Palette.neutral200,
   },
-  thumbnailSelected: {
-    borderColor: Palette.primary600,
-  },
-  thumbnail: {
+  coverPreview: {
     width: '100%',
     height: '100%',
   },
-  checkIconBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Palette.primary600,
-    alignItems: 'center',
-    justifyContent: 'center',
+  adImagePreviewContainer: {
+    width: '100%',
+    height: 160,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: Palette.neutral200,
+    marginBottom: Spacing.sm,
   },
-  noteCard: {
+  adImagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  replaceBtn: {
+    position: 'absolute',
+    bottom: Spacing.sm,
+    right: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.pill,
+  },
+  replaceBtnText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Palette.pureWhite,
+    fontWeight: '700',
+  },
+  uploadBox: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: Palette.neutral300,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: Palette.neutral50,
+    gap: 4,
+    marginBottom: Spacing.sm,
+  },
+  uploadTitle: {
+    ...Typography.bodySmall,
+    fontWeight: '600',
+    color: Palette.primary700,
+  },
+  uploadSubtitle: {
+    ...Typography.caption,
+    color: Palette.neutral500,
+    fontSize: 11,
+  },
+  ctaScrollWrapper: {
+    marginBottom: Spacing.sm,
+  },
+  ctaScroll: {
+    paddingVertical: 2,
+    gap: 6,
+  },
+  ctaChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Palette.neutral100,
     borderWidth: 1,
     borderColor: Palette.neutral200,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    marginBottom: Spacing.xl,
   },
-  noteText: {
+  ctaChipActive: {
+    backgroundColor: Palette.primary700,
+    borderColor: Palette.primary700,
+  },
+  ctaChipText: {
     ...Typography.caption,
-    color: Palette.neutral600,
-    flex: 1,
-    lineHeight: 16,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.navy900,
+  },
+  ctaChipTextActive: {
+    color: Palette.pureWhite,
+  },
+  previewWrapper: {
+    marginTop: Spacing.sm,
   },
   bottomNav: {
     marginBottom: Spacing.xxl,

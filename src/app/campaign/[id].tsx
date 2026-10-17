@@ -26,6 +26,7 @@ import {
   formatDaysRemaining,
   formatReachRange,
 } from '@/utils/formatters';
+import { estimateReach, formatReachEstimate } from '@/utils/reach';
 
 export default function CampaignDetailScreen() {
   const router = useRouter();
@@ -98,12 +99,13 @@ export default function CampaignDetailScreen() {
     );
   };
 
-  const sampleTiers = [
-    { amount: 10, impressions: '400–600' },
-    { amount: 25, impressions: '1,000–1,500' },
-    { amount: 50, impressions: '2,200–3,500' },
-    { amount: 100, impressions: '5,000–7,500' },
-  ];
+  const sampleTiers = [10, 25, 50, 100].map((amount) => {
+    const { min, max } = estimateReach(amount);
+    return {
+      amount,
+      impressions: formatReachEstimate(min, max),
+    };
+  });
 
   return (
     <ScreenContainer

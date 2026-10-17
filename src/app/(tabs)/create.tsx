@@ -13,17 +13,37 @@ import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { formatCurrency } from '@/utils/formatters';
+
+const STEP_ROUTES: Record<number, string> = {
+  1: '/create-campaign/basics',
+  2: '/create-campaign/story',
+  3: '/create-campaign/visuals',
+  4: '/create-campaign/reach',
+  5: '/create-campaign/submit',
+};
+
+const STEP_NAMES: Record<number, string> = {
+  1: 'Basics',
+  2: 'Story',
+  3: 'Visuals',
+  4: 'Reach',
+  5: 'Submit',
+};
 
 export default function CreateEntryScreen() {
-  const { title, currentStep, resetDraft } = useCampaignDraftStore();
-  const hasActiveDraft = title.trim().length > 0;
+  const { draft, resetDraft, hasDraft } = useCampaignDraftStore();
+  const { campaigns: submittedCampaigns } = useMyCampaignsStore();
+  const hasActiveDraft = hasDraft();
 
   const handleCreateManually = () => {
     router.push('/create-campaign/basics');
   };
 
   const handleResumeDraft = () => {
-    router.push('/create-campaign/basics');
+    const targetRoute = STEP_ROUTES[draft.currentStep] || '/create-campaign/basics';
+    router.push(targetRoute as any);
   };
 
   return (
@@ -37,7 +57,7 @@ export default function CreateEntryScreen() {
 
         <Text style={styles.title}>Start a Campaign</Text>
         <Text style={styles.subtitle}>
-          Draft your campaign message and story. Once approved by our review team, backers can fund
+          Draft your campaign message and substantiated story. Once approved by our review team, backers can fund
           targeted advertising to distribute your message to new audiences.
         </Text>
       </View>
@@ -47,19 +67,21 @@ export default function CreateEntryScreen() {
         <View style={styles.draftCard}>
           <View style={styles.draftHeader}>
             <View style={styles.draftIconBadge}>
-              <Ionicons name="document-text-outline" size={16} color={Palette.warning600} />
+              <Ionicons name="document-text-outline" size={16} color={Palette.warning700} />
             </View>
             <View style={styles.draftInfo}>
               <Text style={styles.draftTitle} numberOfLines={1}>
-                {title || 'Untitled Draft'}
+                {draft.title || 'Untitled Draft'}
               </Text>
-              <Text style={styles.draftSubtitle}>Step {currentStep} of 5 saved</Text>
+              <Text style={styles.draftSubtitle}>
+                Step {draft.currentStep} of 5 ({STEP_NAMES[draft.currentStep]}) saved
+              </Text>
             </View>
           </View>
 
           <View style={styles.draftActions}>
             <AppButton
-              title="Resume Draft"
+              title={`Resume at Step ${draft.currentStep}: ${STEP_NAMES[draft.currentStep]}`}
               onPress={handleResumeDraft}
               variant="primary"
               size="sm"
@@ -78,6 +100,38 @@ export default function CreateEntryScreen() {
         </View>
       )}
 
+      {/* Submitted Campaigns Section (if any exist) */}
+      {submittedCampaigns.length > 0 && (
+        <View style={styles.submittedSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeaderTitle}>Your Submitted Campaigns</Text>
+            <View style={styles.submittedBadge}>
+              <Text style={styles.submittedBadgeText}>{submittedCampaigns.length} in review</Text>
+            </View>
+          </View>
+
+          {submittedCampaigns.map((camp) => (
+            <View key={camp.id} style={styles.submittedCard}>
+              <View style={styles.submittedCardHeader}>
+                <View style={styles.statusPill}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusPillText}>SUBMITTED_FOR_REVIEW</Text>
+                </View>
+                <Text style={styles.submittedDate}>
+                  {new Date(camp.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                </Text>
+              </View>
+              <Text style={styles.submittedTitle} numberOfLines={1}>
+                {camp.title}
+              </Text>
+              <Text style={styles.submittedMeta}>
+                Goal: {formatCurrency(camp.goal)} • {camp.category}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Primary Creation Options */}
       <View style={styles.optionsSection}>
         {/* Option 1: Create Manually */}
@@ -91,7 +145,7 @@ export default function CreateEntryScreen() {
           </View>
           <View style={styles.optionContent}>
             <View style={styles.optionTitleRow}>
-              <Text style={styles.optionTitle}>Create Manually</Text>
+              <Text style={styles.optionTitle}>Start New Campaign</Text>
               <Ionicons name="chevron-forward" size={18} color={Palette.neutral400} />
             </View>
             <Text style={styles.optionDescription}>
@@ -101,7 +155,7 @@ export default function CreateEntryScreen() {
           </View>
         </Pressable>
 
-        {/* Option 2: Create with Voice (Future phase placeholder) */}
+        {/* Option 2: Voice Creation (Explicitly marked for future phase) */}
         <View style={[styles.optionCard, styles.optionDisabled]}>
           <View style={[styles.optionIconContainer, styles.optionIconDisabled]}>
             <Ionicons name="mic-outline" size={24} color={Palette.neutral400} />
@@ -115,7 +169,6 @@ export default function CreateEntryScreen() {
             </View>
             <Text style={[styles.optionDescription, styles.textDisabled]}>
               Describe your message verbally and let an AI interview format your campaign.
-              Available in future update.
             </Text>
           </View>
         </View>
@@ -135,7 +188,7 @@ export default function CreateEntryScreen() {
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Palette.success600} />
             <Text style={styles.checkText}>
-              Verifiable claims backed by citations or public records
+              Verifiable claims backed by independent research and citations
             </Text>
           </View>
           <View style={styles.checkItem}>
@@ -147,13 +200,13 @@ export default function CreateEntryScreen() {
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Palette.success600} />
             <Text style={styles.checkText}>
-              Transparent distribution budget (minimum 80% directly into advertising placements)
+              Transparent distribution budget (85% directly into advertising placements)
             </Text>
           </View>
           <View style={styles.checkItem}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Palette.success600} />
             <Text style={styles.checkText}>
-              Clear disclosure that funds go toward distribution, not personal or organizational donations
+              Clear disclosure that funds sponsor message distribution, not donations
             </Text>
           </View>
         </View>
@@ -162,12 +215,12 @@ export default function CreateEntryScreen() {
       {/* Start Button */}
       <View style={styles.bottomCta}>
         <AppButton
-          title="Start Step 1: Basics"
+          title={hasActiveDraft ? 'Start a New Campaign Instead' : 'Start Campaign Builder'}
           onPress={handleCreateManually}
-          variant="primary"
+          variant={hasActiveDraft ? 'outline' : 'primary'}
           size="lg"
           fullWidth
-          icon={<Ionicons name="arrow-forward" size={18} color={Palette.pureWhite} />}
+          icon={<Ionicons name="arrow-forward" size={18} color={hasActiveDraft ? Palette.navy900 : Palette.pureWhite} />}
           iconPosition="right"
         />
       </View>
@@ -208,7 +261,7 @@ const styles = StyleSheet.create({
   draftCard: {
     backgroundColor: Palette.warning50,
     borderWidth: 1,
-    borderColor: Palette.warning100,
+    borderColor: Palette.warning200,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.lg,
@@ -237,7 +290,8 @@ const styles = StyleSheet.create({
   },
   draftSubtitle: {
     ...Typography.caption,
-    color: Palette.warning600,
+    color: Palette.warning800,
+    fontWeight: '600',
   },
   draftActions: {
     flexDirection: 'row',
@@ -251,41 +305,117 @@ const styles = StyleSheet.create({
   },
   discardText: {
     ...Typography.buttonSmall,
+    color: Palette.error600,
+    fontWeight: '600',
+  },
+  submittedSection: {
+    marginBottom: Spacing.lg,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  sectionHeaderTitle: {
+    ...Typography.h3,
+    fontSize: 15,
+    color: Palette.navy950,
+  },
+  submittedBadge: {
+    backgroundColor: Palette.neutral100,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+  },
+  submittedBadgeText: {
+    ...Typography.caption,
+    fontSize: 10,
+    fontWeight: '600',
+    color: Palette.neutral600,
+  },
+  submittedCard: {
+    backgroundColor: Palette.pureWhite,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    padding: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  submittedCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.warning50,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Palette.warning600,
+  },
+  statusPillText: {
+    ...Typography.caption,
+    fontSize: 9,
+    fontWeight: '700',
+    color: Palette.warning800,
+  },
+  submittedDate: {
+    ...Typography.caption,
+    fontSize: 10,
+    color: Palette.neutral400,
+  },
+  submittedTitle: {
+    ...Typography.bodySmall,
+    fontWeight: '600',
+    color: Palette.navy950,
+  },
+  submittedMeta: {
+    ...Typography.caption,
     color: Palette.neutral500,
+    marginTop: 2,
   },
   optionsSection: {
     gap: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xl,
   },
   optionCard: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     backgroundColor: Palette.pureWhite,
     borderRadius: BorderRadius.card,
     borderWidth: 1,
     borderColor: Palette.neutral200,
     padding: Spacing.md,
     gap: Spacing.md,
+    alignItems: 'flex-start',
   },
   cardPressed: {
-    opacity: 0.9,
-    backgroundColor: Palette.neutral50,
+    borderColor: Palette.primary600,
+    backgroundColor: Palette.warmWhite,
   },
   optionDisabled: {
-    backgroundColor: Palette.neutral100,
+    backgroundColor: Palette.neutral50,
     borderColor: Palette.neutral200,
-    opacity: 0.85,
   },
   optionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
     backgroundColor: Palette.neutral100,
     alignItems: 'center',
     justifyContent: 'center',
   },
   optionIconDisabled: {
-    backgroundColor: Palette.neutral200,
+    backgroundColor: Palette.neutral100,
   },
   optionContent: {
     flex: 1,
@@ -295,18 +425,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
-    flexWrap: 'wrap',
-    gap: 6,
   },
   optionTitle: {
     ...Typography.h3,
     fontSize: 16,
     color: Palette.navy950,
-  },
-  optionDescription: {
-    ...Typography.bodySmall,
-    color: Palette.neutral600,
-    lineHeight: 18,
   },
   textDisabled: {
     color: Palette.neutral400,
@@ -323,19 +446,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Palette.neutral600,
   },
+  optionDescription: {
+    ...Typography.bodySmall,
+    color: Palette.neutral500,
+    lineHeight: 18,
+  },
   checklistCard: {
     backgroundColor: Palette.pureWhite,
     borderRadius: BorderRadius.card,
     borderWidth: 1,
     borderColor: Palette.neutral200,
     padding: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xl,
   },
   checkHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: Spacing.xxs,
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
   },
   checkTitle: {
     ...Typography.h3,
@@ -345,6 +473,7 @@ const styles = StyleSheet.create({
   checkIntro: {
     ...Typography.caption,
     color: Palette.neutral500,
+    lineHeight: 16,
     marginBottom: Spacing.sm,
   },
   checkList: {
@@ -353,15 +482,15 @@ const styles = StyleSheet.create({
   checkItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: Spacing.xs,
   },
   checkText: {
-    ...Typography.bodySmall,
-    color: Palette.navy800,
+    ...Typography.caption,
+    color: Palette.navy900,
     flex: 1,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   bottomCta: {
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing.xxl * 2,
   },
 });

@@ -30,13 +30,18 @@ export const Palette = {
   neutral900: '#0F172A',
 
   // Semantic
+  success700: '#047857',
   success600: '#059669',
   success500: '#10B981',
+  success200: '#A7F3D0',
   success100: '#D1FAE5',
   success50: '#ECFDF5',
 
+  warning800: '#92400E',
+  warning700: '#B45309',
   warning600: '#D97706',
   warning500: '#F59E0B',
+  warning200: '#FDE68A',
   warning100: '#FEF3C7',
   warning50: '#FFFBEB',
 

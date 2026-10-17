@@ -9,13 +9,22 @@ export const Config = {
     code: 'USD',
   },
   reachPerDollarEstimate: {
-    min: 20, // 20 impressions per $1
-    max: 30, // 30 impressions per $1
+    min: 20, // 20 impressions per $1 of advertising budget
+    max: 30, // 30 impressions per $1 of advertising budget
+  },
+  feeStructure: {
+    advertisingPercentage: 85,
+    platformFeePercentage: 10,
+    paymentProcessingPercentage: 5,
   },
   disclaimer: {
     amplification:
       'Contributions fund campaign amplification and advertising distribution. They are not direct donations to the organization or cause.',
     reach:
-      'Illustrative estimate only. Actual reach depends on advertising costs, targeting, platform inventory, and campaign performance.',
+      'Audience size and final delivery depend on advertising costs, inventory, targeting, and campaign performance.',
+    feeExplanation:
+      'Contributions support campaign amplification, including advertising distribution and applicable platform/payment processing costs.',
+    channelsPreference:
+      'Final distribution settings may be adjusted during campaign review.',
   },
 } as const;

@@ -17,9 +17,11 @@ import { CampaignCard } from '@/components/campaign/CampaignCard';
 import { useFeaturedCampaigns } from '@/hooks/useCampaigns';
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { estimateReach, formatReachEstimate } from '@/utils/reach';
 
 export default function HomeScreen() {
   const { data: featuredCampaigns, isLoading, isError, refetch } = useFeaturedCampaigns();
+  const demoReach = estimateReach(25);
 
   return (
     <ScreenContainer
@@ -97,7 +99,9 @@ export default function HomeScreen() {
           <Text style={styles.reachEstimateFormula}>
             <Text style={styles.reachEstimateAmount}>$25 contribution</Text>
             {'  '}→{'  '}
-            <Text style={styles.reachEstimateImpressions}>10K–15K impressions</Text>
+            <Text style={styles.reachEstimateImpressions}>
+              {formatReachEstimate(demoReach.min, demoReach.max)} impressions
+            </Text>
           </Text>
         </View>
 
