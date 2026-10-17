@@ -7,12 +7,47 @@ export interface ContributionTier {
   popular?: boolean;
 }
 
+export type ContributionStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'CANCELLED'
+  | 'REFUNDED';
+
 export interface Contribution {
   id: string;
   campaignId: string;
-  campaignTitle: string;
+  campaignTitle?: string;
   amount: number;
-  estimatedImpressions: number;
-  date: string;
-  status: 'PENDING' | 'CONFIRMED' | 'DISTRIBUTING';
+  platformFee: number;
+  processingFee: number;
+  advertisingAllocation: number;
+  estimatedImpressionsMin: number;
+  estimatedImpressionsMax: number;
+  status: ContributionStatus;
+  createdAt: string;
+  completedAt?: string;
+  paymentReference?: string;
+}
+
+export type PaymentStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export interface Payment {
+  id: string;
+  contributionId: string;
+  campaignId: string;
+  provider: 'SIMULATED';
+  reference: string;
+  status: PaymentStatus;
+  amount: number;
+  createdAt: string;
+  completedAt?: string;
+  cardLast4?: string;
+  errorMessage?: string;
 }

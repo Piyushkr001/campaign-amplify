@@ -34,6 +34,7 @@ export default function CreateVisualsScreen() {
     saveAsDraft,
     lastSavedAt,
     isSaving,
+    hasHydrated,
   } = useCampaignDraftStore();
 
   const [coverImage, setCoverImage] = useState<string | undefined>(draft.coverImage);
@@ -48,13 +49,28 @@ export default function CreateVisualsScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
 
-  // Sync draft rehydration
+  // Sync draft rehydration from AsyncStorage
   useEffect(() => {
     if (draft.coverImage && !coverImage) setCoverImage(draft.coverImage);
     if (draft.adImage && !adImage) setAdImage(draft.adImage);
     if (draft.adHeadline && !adHeadline) setAdHeadline(draft.adHeadline);
     if (draft.adDescription && !adDescription) setAdDescription(draft.adDescription);
-  }, [draft]);
+    if (draft.adCTA && !adCTA) setAdCTA(draft.adCTA);
+  }, [hasHydrated]);
+
+  // Debounced autosave (600ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFields({
+        coverImage,
+        adImage,
+        adHeadline,
+        adDescription,
+        adCTA,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [coverImage, adImage, adHeadline, adDescription, adCTA]);
 
   // Navigation guard
   useEffect(() => {
@@ -280,7 +296,7 @@ export default function CreateVisualsScreen() {
           <Text style={styles.charCounter}>{adDescription.length} / 150</Text>
         </View>
         <AppInput
-          placeholder="e.g. Back this evidence-supported campaign to distribute verified community findings to regional audiences."
+          placeholder="e.g. Back this evidence-supported campaign to distribute community findings to regional audiences."
           value={adDescription}
           onChangeText={(val) => {
             const trimmed = val.slice(0, 150);

@@ -85,9 +85,9 @@ export default function CreateSuccessScreen() {
               <Text style={styles.stepNum}>1</Text>
             </View>
             <View style={styles.timelineItemContent}>
-              <Text style={styles.timelineItemTitle}>Citation & Source Verification</Text>
+              <Text style={styles.timelineItemTitle}>Citation & Source Review</Text>
               <Text style={styles.timelineItemDesc}>
-                Editorial compliance reviewers verify all attached source citations within 24–48 hours.
+                Editorial compliance reviewers audit attached source citations and messaging claims.
               </Text>
             </View>
           </View>

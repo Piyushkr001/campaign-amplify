@@ -49,6 +49,7 @@ export default function CreateReachScreen() {
     saveAsDraft,
     lastSavedAt,
     isSaving,
+    hasHydrated,
   } = useCampaignDraftStore();
 
   const [locations, setLocations] = useState<string[]>(
@@ -68,15 +69,30 @@ export default function CreateReachScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
 
-  // Sync draft rehydration
+  // Sync draft rehydration from AsyncStorage
   useEffect(() => {
-    if (draft.locations?.length > 0 && locations.length === 0) setLocations(draft.locations);
-    if (draft.interests?.length > 0 && interests.length === 0) setInterests(draft.interests);
-    if (draft.channels?.length > 0 && channels.length === 0) setChannels(draft.channels);
+    if (draft.locations?.length > 0) setLocations(draft.locations);
+    if (draft.interests?.length > 0) setInterests(draft.interests);
+    if (draft.channels?.length > 0) setChannels(draft.channels);
+    if (draft.durationDays) setDurationDays(draft.durationDays);
     if (draft.audienceDescription && !audienceDescription) {
       setAudienceDescription(draft.audienceDescription);
     }
-  }, [draft]);
+  }, [hasHydrated]);
+
+  // Debounced autosave (600ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFields({
+        locations,
+        interests,
+        channels,
+        durationDays,
+        audienceDescription,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [locations, interests, channels, durationDays, audienceDescription]);
 
   // Navigation guard
   useEffect(() => {

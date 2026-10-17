@@ -1,5 +1,6 @@
-import React from 'react';
 import {
+  Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -37,8 +38,33 @@ export default function CreateEntryScreen() {
   const { campaigns: submittedCampaigns } = useMyCampaignsStore();
   const hasActiveDraft = hasDraft();
 
-  const handleCreateManually = () => {
-    router.push('/create-campaign/basics');
+  const handleStartNewCampaign = () => {
+    if (hasActiveDraft) {
+      const title = 'Start a new campaign?';
+      const message = 'Your current draft will be cleared.';
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const proceed = window.confirm(`${title}\n\n${message}`);
+        if (proceed) {
+          resetDraft();
+          router.push('/create-campaign/basics');
+        }
+      } else {
+        Alert.alert(title, message, [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Start New',
+            style: 'destructive',
+            onPress: () => {
+              resetDraft();
+              router.push('/create-campaign/basics');
+            },
+          },
+        ]);
+      }
+    } else {
+      router.push('/create-campaign/basics');
+    }
   };
 
   const handleResumeDraft = () => {
@@ -136,7 +162,7 @@ export default function CreateEntryScreen() {
       <View style={styles.optionsSection}>
         {/* Option 1: Create Manually */}
         <Pressable
-          onPress={handleCreateManually}
+          onPress={handleStartNewCampaign}
           accessibilityRole="button"
           accessibilityLabel="Create Manually. Standard step-by-step campaign builder"
           style={({ pressed }) => [styles.optionCard, pressed && styles.cardPressed]}>
@@ -216,7 +242,7 @@ export default function CreateEntryScreen() {
       <View style={styles.bottomCta}>
         <AppButton
           title={hasActiveDraft ? 'Start a New Campaign Instead' : 'Start Campaign Builder'}
-          onPress={handleCreateManually}
+          onPress={handleStartNewCampaign}
           variant={hasActiveDraft ? 'outline' : 'primary'}
           size="lg"
           fullWidth

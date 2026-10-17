@@ -52,7 +52,7 @@ export default function ExploreScreen() {
       <View style={styles.titleRow}>
         <Text style={styles.title}>Explore Campaigns</Text>
         <Text style={styles.subtitle}>
-          Discover verified messages seeking community-funded amplification.
+          Discover important messages seeking community-funded amplification.
         </Text>
       </View>
 

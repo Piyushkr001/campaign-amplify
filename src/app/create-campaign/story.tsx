@@ -36,6 +36,7 @@ export default function CreateStoryScreen() {
     saveAsDraft,
     lastSavedAt,
     isSaving,
+    hasHydrated,
   } = useCampaignDraftStore();
 
   const [storyHeadline, setStoryHeadline] = useState(draft.storyHeadline || '');
@@ -56,13 +57,40 @@ export default function CreateStoryScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
 
-  // Sync draft rehydration
+  // Sync draft rehydration from AsyncStorage
   useEffect(() => {
     if (draft.storyHeadline && !storyHeadline) setStoryHeadline(draft.storyHeadline);
     if (draft.storyIntro && !storyIntro) setStoryIntro(draft.storyIntro);
     if (draft.storyContent && !storyContent) setStoryContent(draft.storyContent);
     if (draft.storyImage && !storyImage) setStoryImage(draft.storyImage);
-  }, [draft]);
+    if (draft.storyImageCaption && !storyImageCaption) setStoryImageCaption(draft.storyImageCaption);
+    if (draft.storyImageCredit && !storyImageCredit) setStoryImageCredit(draft.storyImageCredit);
+    if (draft.suggestedAction && !suggestedAction) setSuggestedAction(draft.suggestedAction);
+  }, [hasHydrated]);
+
+  // Debounced autosave (600ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFields({
+        storyHeadline,
+        storyIntro,
+        storyContent,
+        storyImage,
+        storyImageCaption,
+        storyImageCredit,
+        suggestedAction,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    storyHeadline,
+    storyIntro,
+    storyContent,
+    storyImage,
+    storyImageCaption,
+    storyImageCredit,
+    suggestedAction,
+  ]);
 
   // Navigation guard
   useEffect(() => {
@@ -261,7 +289,7 @@ export default function CreateStoryScreen() {
           multiline
           numberOfLines={7}
           error={errors.storyContent}
-          hint="Objective, factual narrative. Avoid unverified accusations or defamation (100–5000 chars)."
+          hint="Objective, factual narrative supported by context (100–5000 chars)."
         />
 
         {/* Supporting Sources Section */}

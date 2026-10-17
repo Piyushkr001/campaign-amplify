@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
-  Modal,
+  Linking,
   Pressable,
   Share,
   StyleSheet,
@@ -26,7 +26,6 @@ import {
   formatDaysRemaining,
   formatReachRange,
 } from '@/utils/formatters';
-import { estimateReach, formatReachEstimate } from '@/utils/reach';
 
 export default function CampaignDetailScreen() {
   const router = useRouter();
@@ -34,8 +33,6 @@ export default function CampaignDetailScreen() {
   const { data: campaign, isLoading } = useCampaign(id || '');
 
   const [isFundsExpanded, setIsFundsExpanded] = useState(true);
-  const [showAmplifyModal, setShowAmplifyModal] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<number>(25);
 
   if (isLoading) {
     return (
@@ -84,35 +81,39 @@ export default function CampaignDetailScreen() {
     }
   };
 
-  const handleOpenAmplify = () => {
+  const handleOpenContribution = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setShowAmplifyModal(true);
+    router.push({
+      pathname: '/contribution/[campaignId]',
+      params: { campaignId: campaign.id },
+    });
   };
 
-  const handleConfirmBacking = () => {
-    setShowAmplifyModal(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    Alert.alert(
-      'Payment Gateway Preview',
-      `In this phase, payments are simulated. A $${selectedTier} contribution would fund approximately ${selectedTier * 25} to ${selectedTier * 35} targeted impressions for "${campaign.title}". Payment gateway integration will be added in Phase 2.`,
-      [{ text: 'Understood' }]
-    );
+  const handleOpenSourceUrl = async (url?: string) => {
+    if (!url || typeof url !== 'string' || !url.trim().startsWith('http')) {
+      Alert.alert('Invalid Link', 'This supporting source does not provide a valid web address.');
+      return;
+    }
+    try {
+      const trimmed = url.trim();
+      const canOpen = await Linking.canOpenURL(trimmed);
+      if (canOpen) {
+        await Linking.openURL(trimmed);
+      } else {
+        Alert.alert('Unable to Open Link', 'Your device cannot open this web link.');
+      }
+    } catch (err) {
+      console.warn('Failed to open source URL:', err);
+      Alert.alert('Link Error', 'An error occurred while attempting to open this web link.');
+    }
   };
-
-  const sampleTiers = [10, 25, 50, 100].map((amount) => {
-    const { min, max } = estimateReach(amount);
-    return {
-      amount,
-      impressions: formatReachEstimate(min, max),
-    };
-  });
 
   return (
     <ScreenContainer
       scrollable
       paddingHorizontal={false}
       backgroundColor={Palette.warmWhite}>
-      {/* Custom Sticky Header */}
+      {/* Sticky Header Nav */}
       <View style={styles.topNav}>
         <Pressable
           onPress={() => router.back()}
@@ -152,10 +153,10 @@ export default function CampaignDetailScreen() {
         <Text style={styles.title}>{campaign.title}</Text>
 
         <View style={styles.creatorCard}>
-          <Ionicons name="shield-checkmark" size={18} color={Palette.primary600} />
+          <Ionicons name="person-circle-outline" size={22} color={Palette.primary700} />
           <View style={styles.creatorInfo}>
             <Text style={styles.creatorName}>{campaign.creator}</Text>
-            <Text style={styles.creatorType}>{campaign.creatorType} • Verified Publisher</Text>
+            <Text style={styles.creatorType}>{campaign.creatorType} • Campaign Creator</Text>
           </View>
         </View>
 
@@ -204,9 +205,9 @@ export default function CampaignDetailScreen() {
               <Ionicons name="megaphone" size={18} color={Palette.primary700} />
             </View>
             <View style={styles.reachTextGroup}>
-              <Text style={styles.reachTitle}>Estimated audience reach</Text>
+              <Text style={styles.reachTitle}>Estimated Impressions</Text>
               <Text style={styles.reachRange}>
-                {formatReachRange(campaign.estimatedReachMin, campaign.estimatedReachMax)} potential viewers
+                {formatReachRange(campaign.estimatedReachMin, campaign.estimatedReachMax)} impressions
               </Text>
               <Text style={styles.reachDisclaimer}>
                 Based on active ad network inventory and targeted channel distribution.
@@ -216,8 +217,8 @@ export default function CampaignDetailScreen() {
 
           {/* Primary CTA */}
           <AppButton
-            title="Back This Campaign's Reach"
-            onPress={handleOpenAmplify}
+            title="Back This Campaign"
+            onPress={handleOpenContribution}
             variant="primary"
             size="lg"
             fullWidth
@@ -231,17 +232,48 @@ export default function CampaignDetailScreen() {
           </Text>
         </View>
 
-        {/* Section: Campaign Story */}
+        {/* Section: Campaign Story (Structured or Narrative) */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeading}>The Campaign Message</Text>
-          <Text style={styles.storyText}>{campaign.story}</Text>
+
+          {campaign.storyDetails ? (
+            <View style={styles.storyStructuredWrapper}>
+              {campaign.storyDetails.headline ? (
+                <Text style={styles.storyHeadlineText}>{campaign.storyDetails.headline}</Text>
+              ) : null}
+
+              {campaign.storyDetails.intro ? (
+                <Text style={styles.storyIntroLead}>{campaign.storyDetails.intro}</Text>
+              ) : null}
+
+              {campaign.storyDetails.image ? (
+                <View style={styles.storyInlineImageWrapper}>
+                  <Image
+                    source={{ uri: campaign.storyDetails.image }}
+                    style={styles.storyInlineImage}
+                    contentFit="cover"
+                  />
+                  {campaign.storyDetails.caption ? (
+                    <Text style={styles.storyInlineCaption}>
+                      {campaign.storyDetails.caption}
+                      {campaign.storyDetails.credit ? ` (${campaign.storyDetails.credit})` : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              <Text style={styles.storyText}>{campaign.storyDetails.content}</Text>
+            </View>
+          ) : (
+            <Text style={styles.storyText}>{campaign.story.replace(/###\s*/g, '')}</Text>
+          )}
         </View>
 
         {/* Section: Distribution Channels */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeading}>Distribution & Placement Channels</Text>
           <Text style={styles.sectionSubtitle}>
-            Where your amplification dollars deliver impressions:
+            Where amplification dollars deliver impressions:
           </Text>
           <View style={styles.channelsList}>
             {campaign.distributionChannels.map((channel, idx) => (
@@ -292,7 +324,7 @@ export default function CampaignDetailScreen() {
               </View>
 
               <View style={styles.allocationRow}>
-                <Text style={styles.allocationLabel}>Verification & Review Platform Fee</Text>
+                <Text style={styles.allocationLabel}>Platform Operations & Review</Text>
                 <Text style={styles.allocationValue}>{campaign.useOfFunds.platformFee}%</Text>
               </View>
               <View style={styles.allocationBarTrack}>
@@ -321,7 +353,7 @@ export default function CampaignDetailScreen() {
               </View>
 
               <Text style={styles.demoDataTag}>
-                * Sample breakdown percentages displayed for demonstration.
+                * Standard platform allocation policy.
               </Text>
             </View>
           )}
@@ -331,91 +363,35 @@ export default function CampaignDetailScreen() {
         <View style={[styles.sectionCard, styles.lastCard]}>
           <Text style={styles.sectionHeading}>Supporting Sources & Citations</Text>
           <Text style={styles.sectionSubtitle}>
-            Independently verified references supporting the campaign claims:
+            References and citations provided by the campaign creator:
           </Text>
 
-          {campaign.supportingSources.map((source, idx) => (
-            <View key={idx} style={styles.sourceItem}>
-              <Ionicons name="document-text-outline" size={16} color={Palette.primary600} />
-              <View style={styles.sourceContent}>
-                <Text style={styles.sourceTitle}>{source.title}</Text>
-                {source.publisher && (
-                  <Text style={styles.sourcePublisher}>Published by {source.publisher}</Text>
-                )}
-              </View>
-            </View>
-          ))}
+          {campaign.supportingSources.length === 0 ? (
+            <Text style={styles.noSourcesText}>No external sources attached to this campaign.</Text>
+          ) : (
+            campaign.supportingSources.map((source, idx) => (
+              <Pressable
+                key={idx}
+                onPress={() => handleOpenSourceUrl(source.url)}
+                accessibilityRole="button"
+                accessibilityLabel={`View source: ${source.title}`}
+                style={({ pressed }) => [styles.sourceItem, pressed && styles.sourceItemPressed]}>
+                <Ionicons name="document-text-outline" size={18} color={Palette.primary700} style={styles.sourceIcon} />
+                <View style={styles.sourceContent}>
+                  <Text style={styles.sourceTitle}>{source.title}</Text>
+                  {source.publisher && (
+                    <Text style={styles.sourcePublisher}>Published by {source.publisher}</Text>
+                  )}
+                  <View style={styles.viewSourceLinkRow}>
+                    <Text style={styles.viewSourceText}>View Source</Text>
+                    <Ionicons name="arrow-up-right-box-outline" size={13} color={Palette.primary700} />
+                  </View>
+                </View>
+              </Pressable>
+            ))
+          )}
         </View>
       </View>
-
-      {/* Amplify Modal Sheet */}
-      <Modal
-        visible={showAmplifyModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAmplifyModal(false)}>
-        <View style={styles.modalOverlay}>
-          <Pressable
-            style={styles.modalBackdrop}
-            onPress={() => setShowAmplifyModal(false)}
-          />
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Fund Message Amplification</Text>
-              <Pressable
-                onPress={() => setShowAmplifyModal(false)}
-                hitSlop={8}
-                style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={20} color={Palette.neutral600} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.modalSubtitle}>
-              Select an amplification tier to sponsor message distribution across targeted ad networks.
-            </Text>
-
-            {/* Tier selector */}
-            <View style={styles.tierList}>
-              {sampleTiers.map((tier) => (
-                <Pressable
-                  key={tier.amount}
-                  onPress={() => setSelectedTier(tier.amount)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`$${tier.amount} for approximately ${tier.impressions} impressions`}
-                  style={[
-                    styles.tierCard,
-                    selectedTier === tier.amount && styles.tierCardSelected,
-                  ]}>
-                  <View style={styles.tierRadio}>
-                    {selectedTier === tier.amount && <View style={styles.tierRadioActive} />}
-                  </View>
-                  <View style={styles.tierContent}>
-                    <Text style={styles.tierAmount}>${tier.amount}</Text>
-                    <Text style={styles.tierReach}>~{tier.impressions} potential views</Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.modalDisclaimer}>
-              <Ionicons name="information-circle-outline" size={16} color={Palette.primary700} />
-              <Text style={styles.modalDisclaimerText}>
-                Your payment purchases verified digital impressions. This is not a direct charitable donation.
-              </Text>
-            </View>
-
-            <AppButton
-              title={`Confirm $${selectedTier} Amplification (Demo)`}
-              onPress={handleConfirmBacking}
-              variant="primary"
-              size="lg"
-              fullWidth
-            />
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 }
@@ -656,7 +632,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   lastCard: {
-    marginBottom: Spacing.xxl,
+    marginBottom: Spacing.xxl * 2,
   },
   sectionHeading: {
     ...Typography.h2,
@@ -668,6 +644,40 @@ const styles = StyleSheet.create({
     color: Palette.neutral500,
     marginTop: 2,
     marginBottom: Spacing.sm,
+  },
+  storyStructuredWrapper: {
+    marginTop: Spacing.xs,
+  },
+  storyHeadlineText: {
+    ...Typography.h2,
+    fontSize: 18,
+    color: Palette.navy950,
+    marginBottom: Spacing.xs,
+  },
+  storyIntroLead: {
+    ...Typography.body,
+    fontWeight: '600',
+    color: Palette.navy900,
+    lineHeight: 22,
+    marginBottom: Spacing.sm,
+  },
+  storyInlineImageWrapper: {
+    width: '100%',
+    height: 180,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    backgroundColor: Palette.neutral200,
+    marginVertical: Spacing.sm,
+  },
+  storyInlineImage: {
+    width: '100%',
+    height: '100%',
+  },
+  storyInlineCaption: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Palette.neutral500,
+    marginTop: 4,
   },
   storyText: {
     ...Typography.body,
@@ -745,13 +755,25 @@ const styles = StyleSheet.create({
     color: Palette.neutral400,
     marginTop: 4,
   },
+  noSourcesText: {
+    ...Typography.caption,
+    color: Palette.neutral500,
+    marginTop: Spacing.xs,
+  },
   sourceItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
-    paddingVertical: Spacing.xs,
+    paddingVertical: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Palette.neutral100,
+  },
+  sourceItemPressed: {
+    backgroundColor: Palette.neutral50,
+    opacity: 0.8,
+  },
+  sourceIcon: {
+    marginTop: 2,
   },
   sourceContent: {
     flex: 1,
@@ -764,111 +786,18 @@ const styles = StyleSheet.create({
   sourcePublisher: {
     ...Typography.caption,
     color: Palette.neutral500,
+    marginTop: 1,
   },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
-  },
-  modalBackdrop: {
-    flex: 1,
-  },
-  modalSheet: {
-    backgroundColor: Palette.pureWhite,
-    borderTopLeftRadius: BorderRadius.card,
-    borderTopRightRadius: BorderRadius.card,
-    paddingHorizontal: Layout.screenPaddingHorizontal,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.xxl,
-    maxWidth: Layout.maxContentWidth,
-    alignSelf: 'center',
-    width: '100%',
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Palette.neutral300,
-    alignSelf: 'center',
-    marginBottom: Spacing.sm,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  modalTitle: {
-    ...Typography.h2,
-    fontSize: 18,
-    color: Palette.navy950,
-  },
-  modalCloseBtn: {
-    padding: 4,
-  },
-  modalSubtitle: {
-    ...Typography.bodySmall,
-    color: Palette.neutral500,
-    marginBottom: Spacing.md,
-  },
-  tierList: {
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  tierCard: {
+  viewSourceLinkRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Palette.neutral200,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    gap: Spacing.md,
+    gap: 4,
+    marginTop: 4,
   },
-  tierCardSelected: {
-    borderColor: Palette.primary600,
-    backgroundColor: Palette.primary50,
-  },
-  tierRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: Palette.primary600,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tierRadioActive: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Palette.primary600,
-  },
-  tierContent: {
-    flex: 1,
-  },
-  tierAmount: {
-    ...Typography.h3,
-    fontSize: 16,
-    color: Palette.navy950,
-  },
-  tierReach: {
+  viewSourceText: {
     ...Typography.caption,
-    color: Palette.primary700,
+    fontSize: 11,
     fontWeight: '600',
-  },
-  modalDisclaimer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Palette.neutral50,
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    gap: 8,
-    marginBottom: Spacing.lg,
-  },
-  modalDisclaimerText: {
-    ...Typography.caption,
-    color: Palette.neutral600,
-    flex: 1,
-    lineHeight: 16,
+    color: Palette.primary700,
   },
 });

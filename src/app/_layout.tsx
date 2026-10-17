@@ -6,19 +6,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Palette } from '@/constants/colors';
 
+import { queryClient } from '@/services/query-client';
+
 // Keep the splash screen visible while assets load
 SplashScreen.preventAutoHideAsync().catch(() => {});
-
-// Initialize TanStack Query Client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 1000 * 60 * 5,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 export default function RootLayout() {
   useEffect(() => {
@@ -46,6 +37,13 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="create-campaign"
+            options={{
+              headerShown: false,
+              presentation: 'card',
+            }}
+          />
+          <Stack.Screen
+            name="contribution"
             options={{
               headerShown: false,
               presentation: 'card',

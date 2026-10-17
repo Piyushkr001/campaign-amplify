@@ -63,7 +63,7 @@ export default function HomeScreen() {
         </Text>
 
         <Text style={styles.heroBody}>
-          Community-funded amplification helps verified civic, educational, and public-interest
+          Community-funded amplification helps civic, educational, and public-interest
           campaigns reach audiences beyond the creator’s existing network.
         </Text>
 
@@ -106,7 +106,7 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.reachEstimateDisclaimer}>
-          Illustrative estimate only. Contributions fund digital advertising and verified
+          Illustrative estimate only. Contributions fund digital advertising and targeted
           distribution channels. They do not directly donate to the organization or cause.
         </Text>
       </View>

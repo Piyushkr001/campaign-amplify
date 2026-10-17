@@ -40,6 +40,7 @@ export default function CreateBasicsScreen() {
     saveAsDraft,
     lastSavedAt,
     isSaving,
+    hasHydrated,
   } = useCampaignDraftStore();
 
   const [title, setTitle] = useState(draft.title || '');
@@ -50,38 +51,47 @@ export default function CreateBasicsScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
 
-  // Sync draft if rehydrated
+  // Sync draft once rehydrated from AsyncStorage
   useEffect(() => {
     if (draft.title && !title) setTitle(draft.title);
     if (draft.category && draft.category !== category) setCategory(draft.category);
     if (draft.creatorName && !creatorName) setCreatorName(draft.creatorName);
     if (draft.summary && !summary) setSummary(draft.summary);
     if (draft.coverImage && !coverImage) setCoverImage(draft.coverImage);
-  }, [draft]);
+  }, [hasHydrated]);
+
+  // Debounced autosave (600ms) to avoid persisting on every single keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFields({
+        title,
+        category,
+        creatorName,
+        summary,
+        coverImage,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [title, category, creatorName, summary, coverImage]);
 
   const handleTitleChange = (val: string) => {
-    // Hard restrict to 60 chars per specification
     const sanitized = val.slice(0, 60);
     setTitle(sanitized);
-    updateField('title', sanitized);
     if (errors.title) setErrors((prev) => ({ ...prev, title: '' }));
   };
 
   const handleCategoryChange = (cat: CategoryName) => {
     setCategory(cat);
-    updateField('category', cat);
     if (errors.category) setErrors((prev) => ({ ...prev, category: '' }));
   };
 
   const handleCreatorChange = (val: string) => {
     setCreatorName(val);
-    updateField('creatorName', val);
     if (errors.creatorName) setErrors((prev) => ({ ...prev, creatorName: '' }));
   };
 
   const handleSummaryChange = (val: string) => {
     setSummary(val);
-    updateField('summary', val);
     if (errors.summary) setErrors((prev) => ({ ...prev, summary: '' }));
   };
 
@@ -173,7 +183,7 @@ export default function CreateBasicsScreen() {
         <View style={styles.headerTitles}>
           <Text style={styles.pageTitle}>Campaign Basics</Text>
           <Text style={styles.pageSubtitle}>
-            Define your primary message headline, verified identity, and topic category.
+            Define your primary message headline, creator attribution, and topic category.
           </Text>
         </View>
       </View>
@@ -230,7 +240,7 @@ export default function CreateBasicsScreen() {
           onChangeText={handleCreatorChange}
           maxLength={80}
           error={errors.creatorName}
-          hint="Official publishing entity or legal individual name for verified attribution."
+          hint="Official publishing entity or legal individual name for transparent attribution."
         />
 
         {/* Short Summary */}

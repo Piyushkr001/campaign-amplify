@@ -1,6 +1,8 @@
 import { MOCK_CAMPAIGNS } from '@/data/campaigns';
 import { Campaign } from '@/types/campaign';
 import { CategoryName } from '@/constants/categories';
+import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useCampaignFundingStore } from '@/store/campaign-funding-store';
 
 export interface CampaignFilterOptions {
   category?: CategoryName;
@@ -8,9 +10,33 @@ export interface CampaignFilterOptions {
   sortBy?: 'featured' | 'newest' | 'most_funded' | 'ending_soon';
 }
 
+function applyFundingAdjustments(campaign: Campaign): Campaign {
+  const adjustment = useCampaignFundingStore.getState().getFundingAdjustment(campaign.id);
+  if (!adjustment || (adjustment.raisedAdjustment === 0 && adjustment.backerCountAdjustment === 0)) {
+    return campaign;
+  }
+
+  return {
+    ...campaign,
+    raised: campaign.raised + adjustment.raisedAdjustment,
+    backerCount: campaign.backerCount + adjustment.backerCountAdjustment,
+  };
+}
+
 export const CampaignService = {
   getAllCampaigns: async (options?: CampaignFilterOptions): Promise<Campaign[]> => {
-    let list = [...MOCK_CAMPAIGNS];
+    const userCampaigns = useMyCampaignsStore.getState().campaigns;
+
+    // Combine user-created campaigns and mock campaigns, prioritizing user campaigns
+    const combinedMap = new Map<string, Campaign>();
+    userCampaigns.forEach((c) => combinedMap.set(c.id, c));
+    MOCK_CAMPAIGNS.forEach((c) => {
+      if (!combinedMap.has(c.id)) {
+        combinedMap.set(c.id, c);
+      }
+    });
+
+    let list = Array.from(combinedMap.values()).map(applyFundingAdjustments);
 
     if (options?.category && options.category !== 'All') {
       list = list.filter((c) => c.category === options.category);
@@ -49,10 +75,22 @@ export const CampaignService = {
   },
 
   getCampaignById: async (id: string): Promise<Campaign | undefined> => {
-    return MOCK_CAMPAIGNS.find((c) => c.id === id);
+    const userCampaigns = useMyCampaignsStore.getState().campaigns;
+    const foundInUser = userCampaigns.find((c) => c.id === id);
+    if (foundInUser) {
+      return applyFundingAdjustments(foundInUser);
+    }
+
+    const foundInMock = MOCK_CAMPAIGNS.find((c) => c.id === id);
+    if (foundInMock) {
+      return applyFundingAdjustments(foundInMock);
+    }
+
+    return undefined;
   },
 
   getFeaturedCampaigns: async (): Promise<Campaign[]> => {
-    return MOCK_CAMPAIGNS.filter((c) => c.featured);
+    const all = await CampaignService.getAllCampaigns();
+    return all.filter((c) => c.featured);
   },
 };

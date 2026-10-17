@@ -4,9 +4,18 @@ export type CampaignStatus =
   | 'DRAFT'
   | 'SUBMITTED_FOR_REVIEW'
   | 'UNDER_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'APPROVED'
   | 'FUNDING'
+  | 'FUNDING_GOAL_REACHED'
+  | 'FUNDING_ENDED'
+  | 'DISTRIBUTION_PREPARATION'
   | 'PROMOTING'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'REFUND_PENDING'
+  | 'FAILED';
 
 export interface CampaignSource {
   id: string;
@@ -76,6 +85,15 @@ export interface DistributionTarget {
   percentage: number;
 }
 
+export interface CampaignStoryDetails {
+  headline?: string;
+  intro?: string;
+  content: string;
+  image?: string;
+  caption?: string;
+  credit?: string;
+}
+
 export interface Campaign {
   id: string;
   title: string;
@@ -84,7 +102,24 @@ export interface Campaign {
   creatorType: CreatorType;
   creatorAvatar?: string;
   summary: string;
-  story: string;
+  story: string; // Plaintext narrative or overview
+  storyDetails?: CampaignStoryDetails; // Structured editorial story
+  storyHeadline?: string;
+  storyIntro?: string;
+  storyContent?: string;
+  storyImage?: string;
+  storyImageCaption?: string;
+  storyImageCredit?: string;
+  suggestedAction?: string;
+  adImage?: string;
+  adHeadline?: string;
+  adDescription?: string;
+  adCTA?: string;
+  locations?: string[];
+  interests?: string[];
+  channels?: string[];
+  audienceDescription?: string;
+  durationDays?: number;
   coverImage: string;
   raised: number;
   goal: number;
@@ -94,6 +129,7 @@ export interface Campaign {
   daysRemaining: number;
   featured: boolean;
   createdAt: string;
+  submittedAt?: string;
   backerCount: number;
   distributionChannels: string[];
   useOfFunds: UseOfFundsBreakdown;

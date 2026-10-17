@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,7 +25,13 @@ import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateReach, formatReachEstimate } from '@/utils/reach';
-import { CampaignSubmitSchema } from '@/schemas/campaign.schema';
+import {
+  CampaignBasicsSchema,
+  CampaignReachSchema,
+  CampaignStorySchema,
+  CampaignSubmitSchema,
+  CampaignVisualsSchema,
+} from '@/schemas/campaign.schema';
 
 const GOAL_PRESETS = [1000, 2500, 5000, 10000, 25000];
 
@@ -94,7 +101,86 @@ export default function CreateSubmitScreen() {
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
+  const promptStepCorrection = (stepName: string, errorMessage: string, route: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    const title = `${stepName} Section Incomplete`;
+    const message = `${errorMessage}\n\nPlease review and complete the ${stepName} section before submitting.`;
+    const buttonText = `Review ${stepName}`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const proceed = window.confirm(`${title}\n\n${message}\n\nClick OK to open ${buttonText}.`);
+      if (proceed) {
+        router.push(route as any);
+      }
+    } else {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: buttonText, onPress: () => router.push(route as any) },
+      ]);
+    }
+  };
+
   const handleSubmit = () => {
+    // Step 1: Basics
+    const basicsResult = CampaignBasicsSchema.safeParse({
+      title: draft.title,
+      category: draft.category,
+      creatorName: draft.creatorName,
+      summary: draft.summary,
+      coverImage: draft.coverImage,
+    });
+    if (!basicsResult.success) {
+      const issue = basicsResult.error.issues[0];
+      promptStepCorrection('Basics', issue.message, '/create-campaign/basics');
+      return;
+    }
+
+    // Step 2: Story
+    const storyResult = CampaignStorySchema.safeParse({
+      storyHeadline: draft.storyHeadline,
+      storyIntro: draft.storyIntro,
+      storyContent: draft.storyContent,
+      sources: draft.sources,
+      storyImage: draft.storyImage,
+      storyImageCaption: draft.storyImageCaption,
+      storyImageCredit: draft.storyImageCredit,
+      suggestedAction: draft.suggestedAction,
+    });
+    if (!storyResult.success) {
+      const issue = storyResult.error.issues[0];
+      promptStepCorrection('Story', issue.message, '/create-campaign/story');
+      return;
+    }
+
+    // Step 3: Visuals
+    const visualsResult = CampaignVisualsSchema.safeParse({
+      coverImage: draft.coverImage,
+      adImage: draft.adImage,
+      adHeadline: draft.adHeadline,
+      adDescription: draft.adDescription,
+      adCTA: draft.adCTA,
+    });
+    if (!visualsResult.success) {
+      const issue = visualsResult.error.issues[0];
+      promptStepCorrection('Visuals & Ad Creative', issue.message, '/create-campaign/visuals');
+      return;
+    }
+
+    // Step 4: Reach
+    const reachResult = CampaignReachSchema.safeParse({
+      locations: draft.locations,
+      interests: draft.interests,
+      channels: draft.channels,
+      audienceDescription: draft.audienceDescription,
+      durationDays: draft.durationDays,
+    });
+    if (!reachResult.success) {
+      const issue = reachResult.error.issues[0];
+      promptStepCorrection('Reach & Targeting', issue.message, '/create-campaign/reach');
+      return;
+    }
+
+    // Step 5: Submit
     const result = CampaignSubmitSchema.safeParse({
       fundingGoal,
       agreePolicies,
@@ -313,7 +399,7 @@ export default function CreateSubmitScreen() {
           </View>
           {draft.sources.length === 0 ? (
             <Text style={styles.noSourcesWarn}>
-              No research links attached. Campaigns with citations are approved faster.
+              No supporting research links attached. Adding references helps provide context for review.
             </Text>
           ) : (
             draft.sources.slice(0, 3).map((s, idx) => (

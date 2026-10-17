@@ -63,6 +63,6 @@ export const CATEGORY_METADATA: Record<CategoryName, { icon: string; description
   },
   Other: {
     icon: 'ellipsis-horizontal-circle-outline',
-    description: 'Other verified community message amplification campaigns',
+    description: 'Other community message amplification campaigns',
   },
 };

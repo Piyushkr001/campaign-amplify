@@ -106,9 +106,9 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
             <Ionicons name="megaphone-outline" size={14} color={Palette.primary700} />
           </View>
           <View style={styles.reachTextWrapper}>
-            <Text style={styles.reachLabel}>Estimated audience reach</Text>
+            <Text style={styles.reachLabel}>Estimated Impressions</Text>
             <Text style={styles.reachValue}>
-              {formatReachRange(campaign.estimatedReachMin, campaign.estimatedReachMax)} people
+              {formatReachRange(campaign.estimatedReachMin, campaign.estimatedReachMax)} impressions
             </Text>
           </View>
         </View>
@@ -139,8 +139,8 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           </View>
         </View>
 
-        {/* CTA */}
-        <View style={styles.actionContainer}>
+        {/* Action Button Wrapper */}
+        <View style={styles.actionContainer} pointerEvents="none">
           <AppButton
             title="Back This Campaign"
             onPress={handlePress}
