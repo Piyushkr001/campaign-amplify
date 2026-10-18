@@ -153,4 +153,11 @@ export interface Campaign {
   requestedChangesAt?: string;
   rejectedAt?: string;
   fundedAt?: string;
+  fundingGoalReachedAt?: string;
+  fundingEndedAt?: string;
+  distributionPreparationAt?: string;
+  promotionStartedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  failedAt?: string;
 }

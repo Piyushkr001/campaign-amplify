@@ -48,7 +48,6 @@ export default function CreateReachScreen() {
     setCurrentStep,
     saveAsDraft,
     lastSavedAt,
-    isSaving,
     hasHydrated,
   } = useCampaignDraftStore();
 
@@ -206,7 +205,6 @@ export default function CreateReachScreen() {
       <CampaignStepIndicator
         currentStep={4}
         lastSavedAt={lastSavedAt}
-        isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
 

@@ -33,7 +33,6 @@ export default function CreateVisualsScreen() {
     setCurrentStep,
     saveAsDraft,
     lastSavedAt,
-    isSaving,
     hasHydrated,
   } = useCampaignDraftStore();
 
@@ -160,7 +159,6 @@ export default function CreateVisualsScreen() {
       <CampaignStepIndicator
         currentStep={3}
         lastSavedAt={lastSavedAt}
-        isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
 

@@ -26,6 +26,7 @@ import {
   CreatorDashboardTab,
 } from '@/constants/campaign-status';
 import { Campaign } from '@/types/campaign';
+import { getEffectiveCampaign } from '@/utils/effective-campaign';
 
 export default function MyCampaignsScreen() {
   const router = useRouter();
@@ -33,12 +34,15 @@ export default function MyCampaignsScreen() {
   const { draft, hasMeaningfulDraft, resetDraft } = useCampaignDraftStore();
   const [selectedTab, setSelectedTab] = useState<CreatorDashboardTab>('ALL');
 
+  // Compute authoritative effective campaign state including live funding adjustments
+  const effectiveCampaigns = campaigns.map(getEffectiveCampaign);
+
   const showActiveDraft =
     (selectedTab === 'ALL' || selectedTab === 'DRAFTS') && hasMeaningfulDraft();
 
   // Filter campaigns by selected tab
   const activeStatusFilter = CREATOR_TAB_STATUS_MAPPING[selectedTab];
-  const filteredCampaigns = campaigns.filter((c) => {
+  const filteredCampaigns = effectiveCampaigns.filter((c) => {
     if (!activeStatusFilter) return true;
     return activeStatusFilter.includes(c.status);
   });
@@ -46,14 +50,14 @@ export default function MyCampaignsScreen() {
   // Calculate count for each tab
   const getTabCount = (tab: CreatorDashboardTab) => {
     if (tab === 'DRAFTS') {
-      const baseCount = campaigns.filter((c) => c.status === 'DRAFT').length;
+      const baseCount = effectiveCampaigns.filter((c) => c.status === 'DRAFT').length;
       return hasMeaningfulDraft() ? baseCount + 1 : baseCount;
     }
     const statuses = CREATOR_TAB_STATUS_MAPPING[tab];
     if (!statuses) {
-      return campaigns.length + (hasMeaningfulDraft() ? 1 : 0);
+      return effectiveCampaigns.length + (hasMeaningfulDraft() ? 1 : 0);
     }
-    return campaigns.filter((c) => statuses.includes(c.status)).length;
+    return effectiveCampaigns.filter((c) => statuses.includes(c.status)).length;
   };
 
   const handleCardPress = (campaign: Campaign) => {

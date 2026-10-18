@@ -39,7 +39,6 @@ export const INITIAL_CAMPAIGN_DRAFT: CampaignDraft = {
 export interface CampaignDraftStore {
   draft: CampaignDraft;
   hasHydrated: boolean;
-  isSaving: boolean;
   lastSavedAt: string | null;
 
   // Actions
@@ -71,7 +70,6 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
     (set, get) => ({
       draft: { ...INITIAL_CAMPAIGN_DRAFT },
       hasHydrated: false,
-      isSaving: false,
       lastSavedAt: null,
 
       // Top-level aliases for fast access & backwards compatibility
@@ -177,7 +175,6 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
             lastSavedAt: now,
           },
           lastSavedAt: now,
-          isSaving: false,
         }));
       },
 
@@ -191,7 +188,6 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
               lastSavedAt: now,
             },
             lastSavedAt: now,
-            isSaving: false,
           }));
         } else {
           get().saveAsDraft();
@@ -245,7 +241,6 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
             lastSavedAt: now,
           },
           lastSavedAt: now,
-          isSaving: false,
         });
       },
 
@@ -253,7 +248,6 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
         set({
           draft: { ...INITIAL_CAMPAIGN_DRAFT },
           lastSavedAt: null,
-          isSaving: false,
         });
       },
 

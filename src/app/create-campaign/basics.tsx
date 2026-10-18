@@ -39,7 +39,6 @@ export default function CreateBasicsScreen() {
     setCurrentStep,
     saveAsDraft,
     lastSavedAt,
-    isSaving,
     hasHydrated,
   } = useCampaignDraftStore();
 
@@ -166,7 +165,6 @@ export default function CreateBasicsScreen() {
       <CampaignStepIndicator
         currentStep={1}
         lastSavedAt={lastSavedAt}
-        isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
 

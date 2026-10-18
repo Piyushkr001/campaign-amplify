@@ -24,17 +24,14 @@ export interface CampaignStepIndicatorProps {
   currentStep: StepNumber;
   lastSavedAt?: string | null;
   onSaveDraft?: () => void;
-  isSaving?: boolean;
 }
 
 export const CampaignStepIndicator: React.FC<CampaignStepIndicatorProps> = ({
   currentStep,
   lastSavedAt,
   onSaveDraft,
-  isSaving = false,
 }) => {
   const getSaveTimeText = () => {
-    if (isSaving) return 'Saving...';
     if (!lastSavedAt) return 'Draft auto-saves locally';
     try {
       const savedDate = new Date(lastSavedAt);

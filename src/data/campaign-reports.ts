@@ -143,7 +143,7 @@ export function getOrGenerateCampaignReport(campaign: Campaign): CampaignReport 
     return MOCK_CAMPAIGN_REPORTS[campaign.id];
   }
 
-  const fundsRaised = campaign.raised || campaign.goal || 2500;
+  const fundsRaised = typeof campaign.raised === 'number' ? campaign.raised : 0;
   const adRate = Config.feeStructure.advertisingPercentage / 100;
   const platformRate = Config.feeStructure.platformFeePercentage / 100;
   const processingRate = Config.feeStructure.paymentProcessingPercentage / 100;
@@ -161,29 +161,35 @@ export function getOrGenerateCampaignReport(campaign: Campaign): CampaignReport 
   // Derive measured demo impressions proportional to spend
   const avgImpressionsPerDollar =
     (Config.reachPerDollarEstimate.min + Config.reachPerDollarEstimate.max) / 2;
-  const measuredImpressions = Math.round(advertisingSpend * avgImpressionsPerDollar);
-  const measuredReach = Math.round(measuredImpressions * 0.65);
-  const clicks = Math.round(measuredImpressions * 0.024);
-  const ctr = Number(((clicks / (measuredImpressions || 1)) * 100).toFixed(2));
 
   const channels =
     campaign.distributionChannels.length > 0
       ? campaign.distributionChannels
       : ['Meta (Instagram/FB)', 'Google Display'];
 
-  const channelSpend = Math.round(advertisingSpend / channels.length);
-  const channelResults = channels.map((ch) => {
-    const chImp = Math.round(channelSpend * avgImpressionsPerDollar);
+  const channelsCount = channels.length || 1;
+  const baseChannelSpend = Math.floor(advertisingSpend / channelsCount);
+  const remainderSpend = advertisingSpend - baseChannelSpend * channelsCount;
+
+  const channelResults = channels.map((ch, idx) => {
+    const spend = baseChannelSpend + (idx === 0 ? remainderSpend : 0);
+    const chImp = Math.round(spend * avgImpressionsPerDollar);
     const chClicks = Math.round(chImp * 0.024);
+    const chCtr = Number(((chClicks / (chImp || 1)) * 100).toFixed(2));
     return {
       channel: ch,
-      spend: channelSpend,
+      spend,
       impressions: chImp,
       reach: Math.round(chImp * 0.65),
       clicks: chClicks,
-      ctr: Number(((chClicks / (chImp || 1)) * 100).toFixed(2)),
+      ctr: chCtr,
     };
   });
+
+  const measuredImpressions = channelResults.reduce((acc, c) => acc + c.impressions, 0);
+  const measuredReach = Math.round(measuredImpressions * 0.65);
+  const clicks = channelResults.reduce((acc, c) => acc + c.clicks, 0);
+  const ctr = Number(((clicks / (measuredImpressions || 1)) * 100).toFixed(2));
 
   return {
     id: `rep-${campaign.id}`,
@@ -202,8 +208,8 @@ export function getOrGenerateCampaignReport(campaign: Campaign): CampaignReport 
     ctr,
     durationDays: campaign.durationDays || 14,
     channelResults,
-    startedAt: campaign.submittedAt || campaign.createdAt,
-    completedAt: isCompleted ? new Date().toISOString() : undefined,
+    startedAt: campaign.promotionStartedAt || campaign.distributionPreparationAt,
+    completedAt: campaign.completedAt,
     isDemoData: true,
   };
 }

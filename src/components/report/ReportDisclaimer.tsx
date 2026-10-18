@@ -17,8 +17,8 @@ export function ReportDisclaimer({ isDemoData = true }: ReportDisclaimerProps) {
         <Text style={styles.badgeTitle}>Methodology & Prototype Notice</Text>
       </View>
       <Text style={styles.text}>
-        Estimated impressions are projected using configured platform benchmarks (85% advertising
-        allocation at ~$25 CPM).
+        Estimated impressions use the prototype assumption of approximately 20–30 impressions per
+        advertising dollar (85% advertising allocation).
       </Text>
       {isDemoData ? (
         <Text style={[styles.text, styles.demoText]}>

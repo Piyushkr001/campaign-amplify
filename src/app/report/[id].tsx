@@ -149,7 +149,14 @@ export default function CampaignReportScreen() {
           <Ionicons name="calendar-outline" size={14} color={Palette.neutral500} />
           <Text style={styles.durationText}>
             Distribution Duration: {report.durationDays} days
-            {report.completedAt ? ' • Completed' : ' • Active'}
+            {report.startedAt
+              ? ` • Started ${new Date(report.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
+              : ''}
+            {report.completedAt
+              ? ` • Completed ${new Date(report.completedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`
+              : isInterim
+              ? ' • In Delivery'
+              : ''}
           </Text>
         </View>
       </View>
@@ -214,8 +221,8 @@ export default function CampaignReportScreen() {
           </View>
         </View>
         <Text style={styles.sectionSubtitle}>
-          These values were estimates calculated before campaign distribution based on platform CPM
-          benchmarks.
+          These values were estimates calculated before campaign distribution based on platform
+          impression benchmarks.
         </Text>
 
         <View style={styles.estimateBox}>
@@ -224,7 +231,8 @@ export default function CampaignReportScreen() {
             {formatReachRange(report.estimatedImpressionsMin, report.estimatedImpressionsMax)}
           </Text>
           <Text style={styles.estimateNote}>
-            Calculated at configured ~$25 CPM across targeted interest groups.
+            Estimated impressions use the prototype assumption of approximately 20–30 impressions
+            per advertising dollar across targeted channels.
           </Text>
         </View>
       </View>

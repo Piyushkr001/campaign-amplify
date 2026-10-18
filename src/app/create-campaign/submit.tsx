@@ -47,7 +47,6 @@ export default function CreateSubmitScreen() {
     saveAsDraft,
     resetDraft,
     lastSavedAt,
-    isSaving,
   } = useCampaignDraftStore();
   const { addFromDraft, updateFromDraft, transitionCampaign, getCampaignById } =
     useMyCampaignsStore();
@@ -214,10 +213,28 @@ export default function CreateSubmitScreen() {
           fundingGoal,
         });
 
-        transitionCampaign(draft.id, 'SUBMITTED_FOR_REVIEW', {
+        if (!updatedCampaign) {
+          setIsSubmitting(false);
+          Alert.alert(
+            'Revision Failed',
+            'Unable to update the original campaign record. Your changes have been preserved in your draft.'
+          );
+          return;
+        }
+
+        const transitionResult = transitionCampaign(draft.id, 'SUBMITTED_FOR_REVIEW', {
           actor: 'CREATOR',
           note: 'Campaign revisions resubmitted by creator for editorial review.',
         });
+
+        if (!transitionResult.success) {
+          setIsSubmitting(false);
+          Alert.alert(
+            'Resubmission Failed',
+            transitionResult.error || 'The lifecycle transition could not be completed. Your draft remains saved.'
+          );
+          return;
+        }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         resetDraft();
@@ -226,7 +243,7 @@ export default function CreateSubmitScreen() {
           pathname: '/create-campaign/success',
           params: {
             id: draft.id,
-            title: updatedCampaign?.title || draft.title,
+            title: updatedCampaign.title || draft.title,
             resubmitted: 'true',
           },
         });
@@ -259,7 +276,6 @@ export default function CreateSubmitScreen() {
       <CampaignStepIndicator
         currentStep={5}
         lastSavedAt={lastSavedAt}
-        isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
 

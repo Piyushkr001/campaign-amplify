@@ -28,6 +28,8 @@ import {
   formatCurrency,
   formatReachRange,
 } from '@/utils/formatters';
+import { getEffectiveCampaign } from '@/utils/effective-campaign';
+import { isPublicCampaign } from '@/constants/campaign-status';
 
 export default function MyCampaignDetailScreen() {
   const router = useRouter();
@@ -35,7 +37,8 @@ export default function MyCampaignDetailScreen() {
   const { getCampaignById } = useMyCampaignsStore();
   const { loadCampaignIntoDraft } = useCampaignDraftStore();
 
-  const campaign = id ? getCampaignById(id) : undefined;
+  const rawCampaign = id ? getCampaignById(id) : undefined;
+  const campaign = rawCampaign ? getEffectiveCampaign(rawCampaign) : undefined;
 
   if (!campaign) {
     return (
@@ -101,9 +104,15 @@ export default function MyCampaignDetailScreen() {
         </Pressable>
         <Text style={styles.navTitle}>Campaign Status</Text>
         <Pressable
-          onPress={() => router.push(`/campaign/${campaign.id}`)}
+          onPress={() => {
+            if (isPublicCampaign(campaign)) {
+              router.push(`/campaign/${campaign.id}`);
+            } else {
+              router.push(`/my-campaigns/${campaign.id}/preview`);
+            }
+          }}
           accessibilityRole="button"
-          accessibilityLabel="Preview public view"
+          accessibilityLabel="Preview campaign presentation"
           style={styles.previewBtn}>
           <Ionicons name="eye-outline" size={18} color={Palette.navy900} />
         </Pressable>
@@ -134,7 +143,13 @@ export default function MyCampaignDetailScreen() {
           }
           requestedAt={campaign.requestedChangesAt}
           onEditCampaign={handleEditForChanges}
-          onViewCampaign={() => router.push(`/campaign/${campaign.id}`)}
+          onViewCampaign={() => {
+            if (isPublicCampaign(campaign)) {
+              router.push(`/campaign/${campaign.id}`);
+            } else {
+              router.push(`/my-campaigns/${campaign.id}/preview`);
+            }
+          }}
         />
       )}
 

@@ -35,7 +35,6 @@ export default function CreateStoryScreen() {
     removeSource,
     saveAsDraft,
     lastSavedAt,
-    isSaving,
     hasHydrated,
   } = useCampaignDraftStore();
 
@@ -201,7 +200,6 @@ export default function CreateStoryScreen() {
       <CampaignStepIndicator
         currentStep={2}
         lastSavedAt={lastSavedAt}
-        isSaving={isSaving}
         onSaveDraft={handleSaveDraft}
       />
 

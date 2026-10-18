@@ -12,6 +12,7 @@ import { generateId } from '@/utils/id';
 import { queryClient } from '@/services/query-client';
 import { campaignKeys } from '@/constants/query-keys';
 import { isValidTransition } from '@/constants/campaign-status';
+import { Config } from '@/constants/config';
 
 export interface TransitionContext {
   actor: 'CREATOR' | 'REVIEWER' | 'SYSTEM';
@@ -141,9 +142,9 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
           distributionChannels:
             draft.channels.length > 0 ? draft.channels : ['Meta', 'Google Display'],
           useOfFunds: {
-            advertising: 85,
-            platformFee: 10,
-            paymentProcessing: 5,
+            advertising: Config.feeStructure.advertisingPercentage,
+            platformFee: Config.feeStructure.platformFeePercentage,
+            paymentProcessing: Config.feeStructure.paymentProcessingPercentage,
           },
           supportingSources: draft.sources.map((s) => ({
             title: s.title,
@@ -198,7 +199,7 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
           storyImageCaption: draft.storyImageCaption,
           storyImageCredit: draft.storyImageCredit,
           suggestedAction: draft.suggestedAction,
-          adImage: draft.adImage || campaign.adImage,
+          adImage: draft.adImage,
           adHeadline: draft.adHeadline || campaign.adHeadline,
           adDescription: draft.adDescription || campaign.adDescription,
           adCTA: draft.adCTA || campaign.adCTA,
@@ -300,8 +301,20 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
           timestampUpdates.rejectionReason = context.note;
         } else if (nextStatus === 'FUNDING') {
           timestampUpdates.fundedAt = now;
+        } else if (nextStatus === 'FUNDING_GOAL_REACHED') {
+          timestampUpdates.fundingGoalReachedAt = now;
+        } else if (nextStatus === 'FUNDING_ENDED') {
+          timestampUpdates.fundingEndedAt = now;
+        } else if (nextStatus === 'DISTRIBUTION_PREPARATION') {
+          timestampUpdates.distributionPreparationAt = now;
+        } else if (nextStatus === 'PROMOTING') {
+          timestampUpdates.promotionStartedAt = now;
         } else if (nextStatus === 'COMPLETED') {
-          timestampUpdates.status = 'COMPLETED';
+          timestampUpdates.completedAt = now;
+        } else if (nextStatus === 'CANCELLED') {
+          timestampUpdates.cancelledAt = now;
+        } else if (nextStatus === 'FAILED') {
+          timestampUpdates.failedAt = now;
         }
 
         set((state) => ({

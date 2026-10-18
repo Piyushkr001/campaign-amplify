@@ -3,7 +3,8 @@ export const Config = {
   fullName: 'Campaign Amplification Platform',
   tagline: 'Help important messages travel further.',
   supportEmail: 'support@campaignamplify.org',
-  apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://api.campaignamplify.org/v1',
+  apiUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001/api/v1',
+  useApi: process.env.EXPO_PUBLIC_USE_API === 'true',
   currency: {
     symbol: '$',
     code: 'USD',

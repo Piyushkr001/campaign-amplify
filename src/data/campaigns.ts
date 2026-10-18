@@ -1,4 +1,11 @@
 import { Campaign } from '@/types/campaign';
+import { Config } from '@/constants/config';
+
+const DEFAULT_USE_OF_FUNDS = {
+  advertising: Config.feeStructure.advertisingPercentage,
+  platformFee: Config.feeStructure.platformFeePercentage,
+  paymentProcessing: Config.feeStructure.paymentProcessingPercentage,
+};
 
 export const MOCK_CAMPAIGNS: Campaign[] = [
   {
@@ -24,11 +31,7 @@ export const MOCK_CAMPAIGNS: Campaign[] = [
     createdAt: '2026-09-15T08:00:00Z',
     backerCount: 312,
     distributionChannels: ['Meta Targeted Ads', 'Regional News Outlets', 'Civic Network Newsletters'],
-    useOfFunds: {
-      advertising: 85,
-      platformFee: 10,
-      paymentProcessing: 5,
-    },
+    useOfFunds: DEFAULT_USE_OF_FUNDS,
     supportingSources: [
       {
         title: 'WHO/UNICEF Joint Monitoring Programme for Water Supply',
@@ -173,11 +176,7 @@ export const MOCK_CAMPAIGNS: Campaign[] = [
     createdAt: '2026-09-22T11:45:00Z',
     backerCount: 184,
     distributionChannels: ['Transit Station Digital Displays', 'Commuter Geo-targeting', 'Local Podcasts'],
-    useOfFunds: {
-      advertising: 85,
-      platformFee: 10,
-      paymentProcessing: 5,
-    },
+    useOfFunds: DEFAULT_USE_OF_FUNDS,
     supportingSources: [
       {
         title: 'Vision Zero Intersection Safety Data Benchmark',
@@ -245,11 +244,7 @@ export const MOCK_CAMPAIGNS: Campaign[] = [
     createdAt: '2026-09-18T13:00:00Z',
     backerCount: 290,
     distributionChannels: ['Tech & News Feed Ads', 'Privacy Newsletter Sponsorships', 'Search Query Prompts'],
-    useOfFunds: {
-      advertising: 85,
-      platformFee: 10,
-      paymentProcessing: 5,
-    },
+    useOfFunds: DEFAULT_USE_OF_FUNDS,
     supportingSources: [
       {
         title: 'Consumer Biometric Protection Guidelines',
@@ -281,11 +276,7 @@ export const MOCK_CAMPAIGNS: Campaign[] = [
     createdAt: '2026-09-25T15:30:00Z',
     backerCount: 201,
     distributionChannels: ['Career Platform Ads', 'Financial Education Podcasts', 'Social Feeds'],
-    useOfFunds: {
-      advertising: 85,
-      platformFee: 10,
-      paymentProcessing: 5,
-    },
+    useOfFunds: DEFAULT_USE_OF_FUNDS,
     supportingSources: [
       {
         title: 'National Financial Capability Study Summary',

@@ -21,6 +21,7 @@ import { AppInput } from '@/components/ui/AppInput';
 import { useCampaign } from '@/hooks/useCampaigns';
 import { useContributionStore } from '@/store/contribution-store';
 import { useCampaignFundingStore } from '@/store/campaign-funding-store';
+import { useCampaignRuntimeStore } from '@/store/campaign-runtime-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { queryClient } from '@/services/query-client';
 import { campaignKeys } from '@/constants/query-keys';
@@ -181,17 +182,27 @@ export default function SimulatedPaymentScreen() {
         useCampaignFundingStore.getState().addFunding(campaignId || '', contributionAmount);
 
         // Check if campaign funding goal was reached
+        const targetCampaignId = campaignId || '';
         const currentRaised = campaign?.raised || 0;
         const goal = campaign?.goal || 0;
         const newRaised = currentRaised + contributionAmount;
 
         if (campaign && campaign.status === 'FUNDING' && newRaised >= goal) {
-          useMyCampaignsStore
-            .getState()
-            .transitionCampaign(campaignId || '', 'FUNDING_GOAL_REACHED', {
-              actor: 'SYSTEM',
-              note: 'Campaign reached 100% of its amplification funding goal!',
+          const isCreatorCampaign = useMyCampaignsStore.getState().getCampaignById(targetCampaignId);
+          if (isCreatorCampaign) {
+            useMyCampaignsStore
+              .getState()
+              .transitionCampaign(targetCampaignId, 'FUNDING_GOAL_REACHED', {
+                actor: 'SYSTEM',
+                note: 'Campaign reached 100% of its amplification funding goal!',
+              });
+          } else {
+            // Seeded/Mock campaign: apply runtime status override
+            useCampaignRuntimeStore.getState().setOverride(targetCampaignId, {
+              statusOverride: 'FUNDING_GOAL_REACHED',
+              fundingGoalReachedAt: new Date().toISOString(),
             });
+          }
         }
 
         // Invalidate TanStack query cache so all screens reflect new funding
