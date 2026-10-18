@@ -20,6 +20,8 @@ import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { CampaignSource } from '@/types/campaign';
 import { CampaignStorySchema } from '@/schemas/campaign.schema';
+import { Config } from '@/constants/config';
+import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
 import { generateId } from '@/utils/id';
 
@@ -140,7 +142,7 @@ export default function CreateStoryScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     updateFields({
       storyHeadline,
       storyIntro,
@@ -152,7 +154,31 @@ export default function CreateStoryScreen() {
     });
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setSaveBannerText('Story draft saved');
+
+    if (Config.useApi && draft.id) {
+      try {
+        await CampaignService.saveStory(draft.id, {
+          storyHeadline,
+          storyIntro,
+          storyContent,
+          storyImage,
+          storyImageCaption,
+          storyImageCredit,
+          suggestedAction,
+          sources: draft.sources.map((s) => ({
+            title: s.title,
+            url: s.url,
+            publisher: s.publisher,
+          })),
+        });
+        setSaveBannerText('Story saved to cloud & device');
+      } catch (err) {
+        console.warn('[CreateStory] Cloud sync failed:', err);
+        setSaveBannerText('Saved on this device (offline mode)');
+      }
+    } else {
+      setSaveBannerText('Story draft saved');
+    }
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
@@ -191,6 +217,24 @@ export default function CreateStoryScreen() {
       currentStep: 3,
     });
     setCurrentStep(3);
+
+    if (Config.useApi && draft.id) {
+      CampaignService.saveStory(draft.id, {
+        storyHeadline,
+        storyIntro,
+        storyContent,
+        storyImage,
+        storyImageCaption,
+        storyImageCredit,
+        suggestedAction,
+        sources: draft.sources.map((s) => ({
+          title: s.title,
+          url: s.url,
+          publisher: s.publisher,
+        })),
+      }).catch((err) => console.warn('[CreateStory] Background sync warning:', err));
+    }
+
     router.push('/create-campaign/visuals');
   };
 

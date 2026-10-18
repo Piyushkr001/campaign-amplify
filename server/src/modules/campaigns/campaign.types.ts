@@ -24,7 +24,7 @@ export const BACKEND_PUBLIC_STATUSES: BackendCampaignStatus[] = [
   'COMPLETED',
 ];
 
-export interface CampaignPublicDTO {
+export interface CampaignListDTO {
   id: string;
   title: string;
   category: string;
@@ -32,10 +32,27 @@ export interface CampaignPublicDTO {
   creatorType: string;
   creatorAvatar?: string;
   summary: string;
-  story: string;
+  status: BackendCampaignStatus;
+  coverImage?: string;
+  fundingGoal: number;
+  raised: number;
+  backerCount: number;
+  fundingPercentage: number;
+  estimatedReachMin: number;
+  estimatedReachMax: number;
+  estimatedImpressionsMin: number;
+  estimatedImpressionsMax: number;
+  daysRemaining: number;
+  featured: boolean;
+  createdAt: string;
+  distributionChannels: string[];
+}
+
+export interface CampaignDetailDTO extends CampaignListDTO {
+  story?: string;
   storyHeadline?: string;
   storyIntro?: string;
-  storyContent: string;
+  storyContent?: string;
   storyImage?: string;
   storyImageCaption?: string;
   storyImageCredit?: string;
@@ -44,23 +61,11 @@ export interface CampaignPublicDTO {
   adHeadline?: string;
   adDescription?: string;
   adCTA?: string;
-  locations?: string[];
-  interests?: string[];
-  channels?: string[];
+  locations: string[];
+  interests: string[];
+  channels: string[];
   audienceDescription?: string;
   durationDays: number;
-  coverImage: string;
-  raised: number;
-  goal: number;
-  estimatedReachMin: number;
-  estimatedReachMax: number;
-  status: BackendCampaignStatus;
-  daysRemaining: number;
-  featured: boolean;
-  createdAt: string;
-  submittedAt?: string;
-  backerCount: number;
-  distributionChannels: string[];
   useOfFunds: {
     advertising: number;
     platformFee: number;
@@ -72,7 +77,9 @@ export interface CampaignPublicDTO {
     publisher?: string;
   }>;
 
-  // Lifecycle timestamps
+  // Lifecycle Timestamps
+  submittedAt?: string;
+  reviewStartedAt?: string;
   approvedAt?: string;
   fundingStartedAt?: string;
   fundingGoalReachedAt?: string;
@@ -80,6 +87,36 @@ export interface CampaignPublicDTO {
   distributionPreparationAt?: string;
   promotionStartedAt?: string;
   completedAt?: string;
+  rejectedAt?: string;
   cancelledAt?: string;
   failedAt?: string;
+}
+
+// Backward compatibility alias
+export type CampaignPublicDTO = CampaignDetailDTO;
+
+/**
+ * Calculates remaining days in funding lifecycle based on actual start time and duration.
+ */
+export function calculateDaysRemaining(options: {
+  status: BackendCampaignStatus;
+  fundingStartedAt?: Date | string | null;
+  durationDays?: number | null;
+}): number {
+  if (
+    options.status === 'COMPLETED' ||
+    options.status === 'FUNDING_ENDED' ||
+    options.status === 'FUNDING_GOAL_REACHED'
+  ) {
+    return 0;
+  }
+  if (!options.fundingStartedAt || !options.durationDays) {
+    return options.durationDays ?? 14;
+  }
+  const started = new Date(options.fundingStartedAt).getTime();
+  const durationMs = options.durationDays * 24 * 60 * 60 * 1000;
+  const endsAt = started + durationMs;
+  const now = Date.now();
+  const diffDays = Math.ceil((endsAt - now) / (24 * 60 * 60 * 1000));
+  return Math.max(0, diffDays);
 }

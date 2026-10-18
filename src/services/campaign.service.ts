@@ -38,11 +38,11 @@ function mapDtoToCampaign(dto: any): Campaign {
     channels: dto.channels,
     audienceDescription: dto.audienceDescription,
     durationDays: dto.durationDays,
-    coverImage: dto.coverImage,
-    raised: dto.raised,
-    goal: dto.goal,
-    estimatedReachMin: dto.estimatedReachMin,
-    estimatedReachMax: dto.estimatedReachMax,
+    coverImage: dto.coverImage || dto.coverImageUrl || '',
+    raised: dto.raised ?? dto.amountRaised ?? 0,
+    goal: dto.fundingGoal ?? dto.goal ?? 0,
+    estimatedReachMin: dto.estimatedReachMin ?? dto.estimatedImpressionsMin ?? 0,
+    estimatedReachMax: dto.estimatedReachMax ?? dto.estimatedImpressionsMax ?? 0,
     status: dto.status,
     daysRemaining: dto.daysRemaining,
     featured: !!dto.featured,
@@ -234,5 +234,98 @@ export const CampaignService = {
   getFeaturedCampaigns: async (): Promise<Campaign[]> => {
     const all = await CampaignService.getAllCampaigns();
     return all.filter((c) => c.featured);
+  },
+
+  /**
+   * Initializes a new campaign draft in backend database.
+   */
+  createDraft: async (title?: string): Promise<{ id: string; status: string }> => {
+    const response = await apiClient.post('/campaigns', { title });
+    if (!response.data?.success || !response.data?.data) {
+      throw new Error(response.data?.error?.message || 'Failed to create campaign draft on server.');
+    }
+    return response.data.data;
+  },
+
+  /**
+   * Syncs Step 1: Basics to backend database.
+   */
+  saveBasics: async (
+    id: string,
+    data: {
+      title: string;
+      category: string;
+      creatorName: string;
+      summary: string;
+      coverImage?: string;
+    }
+  ) => {
+    const response = await apiClient.patch(`/campaigns/${id}/basics`, data);
+    return response.data?.data;
+  },
+
+  /**
+   * Syncs Step 2: Story and sources to backend database.
+   */
+  saveStory: async (
+    id: string,
+    data: {
+      storyHeadline?: string;
+      storyIntro?: string;
+      storyContent: string;
+      storyImage?: string;
+      storyImageCaption?: string;
+      storyImageCredit?: string;
+      suggestedAction?: string;
+      sources: Array<{ title: string; url: string; publisher?: string }>;
+    }
+  ) => {
+    const response = await apiClient.patch(`/campaigns/${id}/story`, data);
+    return response.data?.data;
+  },
+
+  /**
+   * Syncs Step 3: Visuals & Ad Creative to backend database.
+   */
+  saveVisuals: async (
+    id: string,
+    data: {
+      coverImage?: string;
+      adHeadline: string;
+      adDescription: string;
+      adCTA: string;
+      adImage?: string;
+    }
+  ) => {
+    const response = await apiClient.patch(`/campaigns/${id}/visuals`, data);
+    return response.data?.data;
+  },
+
+  /**
+   * Syncs Step 4: Reach & Distribution Preferences to backend database.
+   */
+  saveReach: async (
+    id: string,
+    data: {
+      locations: string[];
+      interests: string[];
+      channels: string[];
+      audienceDescription?: string;
+      durationDays: number;
+    }
+  ) => {
+    const response = await apiClient.patch(`/campaigns/${id}/reach`, data);
+    return response.data?.data;
+  },
+
+  /**
+   * Submits campaign for editorial review in backend database.
+   */
+  submitCampaign: async (id: string, data: { fundingGoal: number }) => {
+    const response = await apiClient.post(`/campaigns/${id}/submit`, data);
+    if (!response.data?.success) {
+      throw response.data?.error || new Error('Failed to submit campaign for review.');
+    }
+    return response.data.data;
   },
 };

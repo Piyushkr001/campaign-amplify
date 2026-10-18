@@ -1,10 +1,20 @@
 import { Router } from 'express';
 import { CampaignController } from './campaign.controller';
 import { validateRequest } from '../../middleware/validate.middleware';
-import { listCampaignsQuerySchema, campaignIdParamSchema } from './campaign.schemas';
+import {
+  listCampaignsQuerySchema,
+  campaignIdParamSchema,
+  createDraftSchema,
+  updateBasicsSchema,
+  updateStorySchema,
+  updateVisualsSchema,
+  updateReachSchema,
+  submitCampaignSchema,
+} from './campaign.schemas';
 
 const router = Router();
 
+// Public Read Endpoints
 router.get(
   '/',
   validateRequest({ query: listCampaignsQuerySchema }),
@@ -15,6 +25,43 @@ router.get(
   '/:id',
   validateRequest({ params: campaignIdParamSchema }),
   CampaignController.getById
+);
+
+// Campaign Creation & 5-Step Draft Write Endpoints
+router.post(
+  '/',
+  validateRequest({ body: createDraftSchema }),
+  CampaignController.createDraft
+);
+
+router.patch(
+  '/:id/basics',
+  validateRequest({ params: campaignIdParamSchema, body: updateBasicsSchema }),
+  CampaignController.updateBasics
+);
+
+router.patch(
+  '/:id/story',
+  validateRequest({ params: campaignIdParamSchema, body: updateStorySchema }),
+  CampaignController.updateStory
+);
+
+router.patch(
+  '/:id/visuals',
+  validateRequest({ params: campaignIdParamSchema, body: updateVisualsSchema }),
+  CampaignController.updateVisuals
+);
+
+router.patch(
+  '/:id/reach',
+  validateRequest({ params: campaignIdParamSchema, body: updateReachSchema }),
+  CampaignController.updateReach
+);
+
+router.post(
+  '/:id/submit',
+  validateRequest({ params: campaignIdParamSchema, body: submitCampaignSchema }),
+  CampaignController.submit
 );
 
 export const campaignRouter = router;

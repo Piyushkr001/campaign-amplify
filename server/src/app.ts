@@ -21,7 +21,7 @@ export function createApp(): Express {
   );
   app.use(express.json());
 
-  // Health endpoint
+  // Health endpoint (process health)
   app.get('/api/v1/health', (_req, res) => {
     apiSuccess(res, {
       status: 'ok',
@@ -29,6 +29,38 @@ export function createApp(): Express {
       environment: env.NODE_ENV,
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Readiness endpoint (checks database connectivity)
+  app.get('/api/v1/ready', async (_req, res) => {
+    if (!env.DATABASE_URL) {
+      return apiSuccess(res, {
+        status: 'ready',
+        database: 'standalone_fallback_mode',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const { getDb } = await import('./db/index');
+      const { sql } = await import('drizzle-orm');
+      const db = getDb();
+      await db.execute(sql`SELECT 1`);
+      return apiSuccess(res, {
+        status: 'ready',
+        database: 'connected',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[ReadyCheck] Database connectivity check failed:', err);
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Database service is currently unreachable.',
+        },
+      });
+    }
   });
 
   // API v1 Routes

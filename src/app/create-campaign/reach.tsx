@@ -18,6 +18,8 @@ import { AppInput } from '@/components/ui/AppInput';
 import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { CampaignReachSchema } from '@/schemas/campaign.schema';
+import { Config } from '@/constants/config';
+import { CampaignService } from '@/services/campaign.service';
 
 const PRESET_LOCATIONS = ['India', 'Delhi NCR', 'Uttar Pradesh', 'Mumbai', 'Bengaluru', 'Global'];
 const PRESET_INTERESTS = [
@@ -152,7 +154,7 @@ export default function CreateReachScreen() {
     updateField('durationDays', days);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     updateFields({
       locations,
       interests,
@@ -162,7 +164,24 @@ export default function CreateReachScreen() {
     });
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setSaveBannerText('Reach preferences saved');
+
+    if (Config.useApi && draft.id) {
+      try {
+        await CampaignService.saveReach(draft.id, {
+          locations,
+          interests,
+          channels,
+          audienceDescription,
+          durationDays,
+        });
+        setSaveBannerText('Reach settings saved to cloud & device');
+      } catch (err) {
+        console.warn('[CreateReach] Cloud sync failed:', err);
+        setSaveBannerText('Saved on this device (offline mode)');
+      }
+    } else {
+      setSaveBannerText('Reach preferences saved');
+    }
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
@@ -196,6 +215,17 @@ export default function CreateReachScreen() {
       currentStep: 5,
     });
     setCurrentStep(5);
+
+    if (Config.useApi && draft.id) {
+      CampaignService.saveReach(draft.id, {
+        locations,
+        interests,
+        channels,
+        audienceDescription,
+        durationDays,
+      }).catch((err) => console.warn('[CreateReach] Background sync warning:', err));
+    }
+
     router.push('/create-campaign/submit');
   };
 

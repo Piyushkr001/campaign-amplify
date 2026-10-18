@@ -25,6 +25,8 @@ import { RevisionFeedbackBanner } from '@/components/create/RevisionFeedbackBann
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { Config } from '@/constants/config';
+import { CampaignService } from '@/services/campaign.service';
+import { formatApiError } from '@/services/api-errors';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateReach, formatReachEstimate } from '@/utils/reach';
 import {
@@ -125,7 +127,7 @@ export default function CreateSubmitScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Step 1: Basics
     const basicsResult = CampaignBasicsSchema.safeParse({
       title: draft.title,
@@ -206,8 +208,44 @@ export default function CreateSubmitScreen() {
     setIsSubmitting(true);
 
     try {
+      if (Config.useApi && draft.id) {
+        // Backend API authoritative submission
+        try {
+          const result = await CampaignService.submitCampaign(draft.id, { fundingGoal });
+
+          // Also mirror to local cache so Creator Dashboard & Activity update immediately
+          if (isRevision) {
+            updateFromDraft(draft.id, { ...draft, fundingGoal });
+            transitionCampaign(draft.id, 'SUBMITTED_FOR_REVIEW', {
+              actor: 'CREATOR',
+              note: 'Campaign revisions resubmitted by creator for editorial review.',
+            });
+          } else {
+            addFromDraft({ ...draft, fundingGoal, id: draft.id });
+          }
+
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          resetDraft();
+
+          router.replace({
+            pathname: '/create-campaign/success',
+            params: {
+              id: result.id || draft.id,
+              title: draft.title,
+              resubmitted: isRevision ? 'true' : undefined,
+            },
+          });
+          return;
+        } catch (apiErr: any) {
+          setIsSubmitting(false);
+          const formatted = formatApiError(apiErr);
+          Alert.alert('Submission Incomplete', formatted.message);
+          return;
+        }
+      }
+
       if (draft.id) {
-        // Revision flow: update existing campaign snapshot and transition to SUBMITTED_FOR_REVIEW
+        // Local prototype revision flow
         const updatedCampaign = updateFromDraft(draft.id, {
           ...draft,
           fundingGoal,
@@ -248,7 +286,7 @@ export default function CreateSubmitScreen() {
           },
         });
       } else {
-        // New campaign creation flow
+        // Local prototype new campaign creation flow
         const submittedCampaign = addFromDraft({
           ...draft,
           fundingGoal,

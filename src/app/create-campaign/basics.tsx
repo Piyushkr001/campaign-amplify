@@ -20,7 +20,8 @@ import { AppInput } from '@/components/ui/AppInput';
 import { CategoryChip } from '@/components/ui/CategoryChip';
 import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
-import { CampaignBasicsSchema } from '@/schemas/campaign.schema';
+import { Config } from '@/constants/config';
+import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
 
 const SAMPLE_COVERS = [
@@ -112,7 +113,7 @@ export default function CreateBasicsScreen() {
     updateField('coverImage', undefined);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     updateFields({
       title,
       category,
@@ -122,11 +123,35 @@ export default function CreateBasicsScreen() {
     });
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setSaveBannerText('Draft saved successfully');
+
+    if (Config.useApi) {
+      try {
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateField('id', serverId);
+        }
+        await CampaignService.saveBasics(serverId, {
+          title: title || 'Untitled Draft',
+          category,
+          creatorName: creatorName || 'Community Campaigner',
+          summary: summary || 'Campaign draft in progress.',
+          coverImage,
+        });
+        setSaveBannerText('Draft saved to cloud & device');
+      } catch (err) {
+        console.warn('[CreateBasics] Cloud sync failed:', err);
+        setSaveBannerText('Saved on this device (offline mode)');
+      }
+    } else {
+      setSaveBannerText('Draft saved successfully');
+    }
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    const { CampaignBasicsSchema } = await import('@/schemas/campaign.schema');
     const result = CampaignBasicsSchema.safeParse({
       title,
       category,
@@ -156,6 +181,27 @@ export default function CreateBasicsScreen() {
       currentStep: 2,
     });
     setCurrentStep(2);
+
+    if (Config.useApi) {
+      try {
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(title);
+          serverId = newDraft.id;
+          updateField('id', serverId);
+        }
+        await CampaignService.saveBasics(serverId, {
+          title,
+          category,
+          creatorName,
+          summary,
+          coverImage,
+        });
+      } catch (err) {
+        console.warn('[CreateBasics] Background server sync warning:', err);
+      }
+    }
+
     router.push('/create-campaign/story');
   };
 

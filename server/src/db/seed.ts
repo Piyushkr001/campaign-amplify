@@ -1,6 +1,12 @@
+import { eq } from 'drizzle-orm';
 import { getDb } from './index';
 import * as schema from './schema';
 import { env } from '../config/env';
+
+export const DEMO_USER_EMAIL = 'creator@campaignamplify.org';
+export const DEMO_CAMP_1_ID = '00000000-0000-4000-8000-000000000001';
+export const DEMO_CAMP_2_ID = '00000000-0000-4000-8000-000000000002';
+export const DEMO_CAMP_3_ID = '00000000-0000-4000-8000-000000000003';
 
 async function seed() {
   if (!env.DATABASE_URL) {
@@ -11,25 +17,39 @@ async function seed() {
   console.log('[Seed] Connecting to Neon PostgreSQL...');
   const db = getDb();
 
-  console.log('[Seed] Inserting demo user...');
-  const [demoUser] = await db
-    .insert(schema.users)
-    .values({
-      email: 'creator@campaignamplify.org',
-      displayName: 'Clean Water Action Network',
-      role: 'USER',
-    })
-    .onConflictDoNothing()
-    .returning();
+  console.log('[Seed] Ensuring demo creator user exists...');
+  const existingUsers = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.email, DEMO_USER_EMAIL))
+    .limit(1);
 
-  const userId = demoUser?.id;
+  let userId: string;
+  if (existingUsers.length > 0) {
+    userId = existingUsers[0].id;
+    console.log(`[Seed] Found existing demo user with ID: ${userId}`);
+  } else {
+    const [insertedUser] = await db
+      .insert(schema.users)
+      .values({
+        email: DEMO_USER_EMAIL,
+        displayName: 'Clean Water Action Network',
+        role: 'USER',
+      })
+      .returning();
+    userId = insertedUser.id;
+    console.log(`[Seed] Created demo user with ID: ${userId}`);
+  }
 
-  console.log('[Seed] Inserting public demo campaigns...');
+  console.log('[Seed] Upserting public demo campaigns with deterministic IDs...');
 
+  // ==========================================
   // Campaign 1: FUNDING
-  const [camp1] = await db
+  // ==========================================
+  await db
     .insert(schema.campaigns)
     .values({
+      id: DEMO_CAMP_1_ID,
       creatorId: userId,
       creatorDisplayName: 'Clean Water Action Network',
       title: 'Protect Municipal Watersheds from Industrial PFAS',
@@ -61,51 +81,72 @@ async function seed() {
       approvedAt: new Date('2026-10-03T16:00:00Z'),
       fundingStartedAt: new Date('2026-10-04T08:00:00Z'),
     })
-    .returning();
-
-  if (camp1) {
-    await db.insert(schema.campaignSources).values([
-      {
-        campaignId: camp1.id,
-        title: 'EPA Proposed PFAS National Primary Drinking Water Regulation',
-        url: 'https://www.epa.gov/sdwa/and-polyfluoroalkyl-substances-pfas',
-        publisher: 'U.S. EPA',
-        position: 0,
+    .onConflictDoUpdate({
+      target: schema.campaigns.id,
+      set: {
+        creatorId: userId,
+        creatorDisplayName: 'Clean Water Action Network',
+        title: 'Protect Municipal Watersheds from Industrial PFAS',
+        category: 'Environment',
+        summary:
+          'Funding high-impact digital billboard and social advertising campaigns targeting municipal councils and voters ahead of the watershed protection vote.',
+        status: 'FUNDING',
+        fundingGoal: 15000,
+        amountRaised: 11250,
+        backerCount: 142,
+        durationDays: 24,
+        featured: true,
+        fundingStartedAt: new Date('2026-10-04T08:00:00Z'),
       },
-      {
-        campaignId: camp1.id,
-        title: 'Regional Watershed Contamination Assessment 2026',
-        url: 'https://waterwatch.org/regional-assessment',
-        publisher: 'WaterWatch Institute',
-        position: 1,
-      },
-    ]);
-
-    await db.insert(schema.adCreatives).values({
-      campaignId: camp1.id,
-      headline: 'Is Your Family’s Tap Water Truly Safe?',
-      description:
-        'PFAS levels in our municipal river tested 4x over health advisories. Support amplified public awareness to mandate clean filtration.',
-      cta: 'Learn More & Act',
-      imageUrl:
-        'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1200&q=80',
     });
 
-    await db.insert(schema.campaignTargeting).values({
-      campaignId: camp1.id,
-      locations: ['Regional Municipal District', 'Blackwood County', 'Cascade Valley'],
-      interests: ['Clean Water', 'Parenting & Families', 'Local Government', 'Public Health'],
-      channels: ['Meta (Instagram & Facebook)', 'Google Display Network', 'Local Digital Press'],
-      audienceDescription:
-        'Registered voters, homeowners, and parents within 25 miles of the Blackwood water supply.',
-      durationDays: 24,
-    });
-  }
+  // Re-seed child records for Campaign 1
+  await db.delete(schema.campaignSources).where(eq(schema.campaignSources.campaignId, DEMO_CAMP_1_ID));
+  await db.insert(schema.campaignSources).values([
+    {
+      campaignId: DEMO_CAMP_1_ID,
+      title: 'EPA Proposed PFAS National Primary Drinking Water Regulation',
+      url: 'https://www.epa.gov/sdwa/and-polyfluoroalkyl-substances-pfas',
+      publisher: 'U.S. EPA',
+      position: 0,
+    },
+    {
+      campaignId: DEMO_CAMP_1_ID,
+      title: 'Regional Watershed Contamination Assessment 2026',
+      url: 'https://waterwatch.org/regional-assessment',
+      publisher: 'WaterWatch Institute',
+      position: 1,
+    },
+  ]);
 
+  await db.delete(schema.adCreatives).where(eq(schema.adCreatives.campaignId, DEMO_CAMP_1_ID));
+  await db.insert(schema.adCreatives).values({
+    campaignId: DEMO_CAMP_1_ID,
+    headline: 'Is Your Family’s Tap Water Truly Safe?',
+    description:
+      'PFAS levels in our municipal river tested 4x over health advisories. Support amplified public awareness to mandate clean filtration.',
+    cta: 'Learn More & Act',
+    imageUrl:
+      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=1200&q=80',
+  });
+
+  await db.delete(schema.campaignTargeting).where(eq(schema.campaignTargeting.campaignId, DEMO_CAMP_1_ID));
+  await db.insert(schema.campaignTargeting).values({
+    campaignId: DEMO_CAMP_1_ID,
+    locations: ['Regional Municipal District', 'Blackwood County', 'Cascade Valley'],
+    interests: ['Clean Water', 'Parenting & Families', 'Local Government', 'Public Health'],
+    channels: ['Meta (Instagram & Facebook)', 'Google Display Network', 'Local Digital Press'],
+    audienceDescription:
+      'Registered voters, homeowners, and parents within 25 miles of the Blackwood water supply.',
+  });
+
+  // ==========================================
   // Campaign 2: PROMOTING
-  const [camp2] = await db
+  // ==========================================
+  await db
     .insert(schema.campaigns)
     .values({
+      id: DEMO_CAMP_2_ID,
       creatorId: userId,
       creatorDisplayName: 'CleanGrid Initiative',
       title: 'Understanding Renewable Energy Grid Economics',
@@ -133,43 +174,61 @@ async function seed() {
       distributionPreparationAt: new Date('2026-10-01T08:00:00Z'),
       promotionStartedAt: new Date('2026-10-01T10:00:00Z'),
     })
-    .returning();
-
-  if (camp2) {
-    await db.insert(schema.campaignSources).values([
-      {
-        campaignId: camp2.id,
-        title: 'Renewable Power Generation Costs Report',
-        url: 'https://irena.org/publications',
-        publisher: 'IRENA',
-        position: 0,
+    .onConflictDoUpdate({
+      target: schema.campaigns.id,
+      set: {
+        creatorId: userId,
+        creatorDisplayName: 'CleanGrid Initiative',
+        title: 'Understanding Renewable Energy Grid Economics',
+        category: 'Environment',
+        status: 'PROMOTING',
+        fundingGoal: 20000,
+        amountRaised: 24800,
+        backerCount: 290,
+        durationDays: 30,
+        featured: false,
+        promotionStartedAt: new Date('2026-10-01T10:00:00Z'),
       },
-    ]);
-
-    await db.insert(schema.adCreatives).values({
-      campaignId: camp2.id,
-      headline: 'The Real Math Behind Clean Energy Storage',
-      description:
-        'Learn how distributed battery storage saves taxpayers money while stabilizing regional power grids.',
-      cta: 'Explore the Data',
-      imageUrl:
-        'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=1200&q=80',
     });
 
-    await db.insert(schema.campaignTargeting).values({
-      campaignId: camp2.id,
-      locations: ['Statewide', 'Regional Power Co-ops'],
-      interests: ['Clean Technology', 'Public Utilities', 'Renewable Energy'],
-      channels: ['YouTube Explainer Inventory', 'Clean Energy Publishers & Meta'],
-      audienceDescription: 'Energy consumers, tech workers, and civic leaders statewide.',
-      durationDays: 30,
-    });
-  }
+  await db.delete(schema.campaignSources).where(eq(schema.campaignSources.campaignId, DEMO_CAMP_2_ID));
+  await db.insert(schema.campaignSources).values([
+    {
+      campaignId: DEMO_CAMP_2_ID,
+      title: 'Renewable Power Generation Costs Report',
+      url: 'https://irena.org/publications',
+      publisher: 'IRENA',
+      position: 0,
+    },
+  ]);
 
+  await db.delete(schema.adCreatives).where(eq(schema.adCreatives.campaignId, DEMO_CAMP_2_ID));
+  await db.insert(schema.adCreatives).values({
+    campaignId: DEMO_CAMP_2_ID,
+    headline: 'The Real Math Behind Clean Energy Storage',
+    description:
+      'Learn how distributed battery storage saves taxpayers money while stabilizing regional power grids.',
+    cta: 'Explore the Data',
+    imageUrl:
+      'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=1200&q=80',
+  });
+
+  await db.delete(schema.campaignTargeting).where(eq(schema.campaignTargeting.campaignId, DEMO_CAMP_2_ID));
+  await db.insert(schema.campaignTargeting).values({
+    campaignId: DEMO_CAMP_2_ID,
+    locations: ['Statewide', 'Regional Power Co-ops'],
+    interests: ['Clean Technology', 'Public Utilities', 'Renewable Energy'],
+    channels: ['YouTube Explainer Inventory', 'Clean Energy Publishers & Meta'],
+    audienceDescription: 'Energy consumers, tech workers, and civic leaders statewide.',
+  });
+
+  // ==========================================
   // Campaign 3: COMPLETED
-  const [camp3] = await db
+  // ==========================================
+  await db
     .insert(schema.campaigns)
     .values({
+      id: DEMO_CAMP_3_ID,
       creatorId: userId,
       creatorDisplayName: 'FairEconomy Alliance',
       title: 'Financial Literacy for Early Careers',
@@ -198,44 +257,60 @@ async function seed() {
       promotionStartedAt: new Date('2026-09-20T08:00:00Z'),
       completedAt: new Date('2026-10-11T18:00:00Z'),
     })
-    .returning();
-
-  if (camp3) {
-    await db.insert(schema.campaignSources).values([
-      {
-        campaignId: camp3.id,
-        title: 'National Financial Capability Study Summary',
-        url: 'https://faireconomy.example.org/study',
-        publisher: 'Financial Capability Bureau',
-        position: 0,
+    .onConflictDoUpdate({
+      target: schema.campaigns.id,
+      set: {
+        creatorId: userId,
+        creatorDisplayName: 'FairEconomy Alliance',
+        title: 'Financial Literacy for Early Careers',
+        category: 'Economic Policy',
+        status: 'COMPLETED',
+        fundingGoal: 16000,
+        amountRaised: 18400,
+        backerCount: 201,
+        durationDays: 30,
+        featured: false,
+        completedAt: new Date('2026-10-11T18:00:00Z'),
       },
-    ]);
-
-    await db.insert(schema.adCreatives).values({
-      campaignId: camp3.id,
-      headline: 'Don’t Leave Employer Retirement Matches on the Table',
-      description:
-        'Interactive tools showing young graduates how small 401(k) contributions compound into hundreds of thousands over a career.',
-      cta: 'Try the Free Calculator',
-      imageUrl:
-        'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80',
     });
 
-    await db.insert(schema.campaignTargeting).values({
-      campaignId: camp3.id,
-      locations: ['National Urban Centers', 'College Towns'],
-      interests: ['Recent Graduates', 'Personal Finance', 'Career Development'],
-      channels: ['Meta (Instagram & Facebook)', 'Google Display Network', 'Educational Newsletters'],
-      audienceDescription: 'Adults aged 20–30 starting full-time employment.',
-      durationDays: 30,
-    });
-  }
+  await db.delete(schema.campaignSources).where(eq(schema.campaignSources.campaignId, DEMO_CAMP_3_ID));
+  await db.insert(schema.campaignSources).values([
+    {
+      campaignId: DEMO_CAMP_3_ID,
+      title: 'National Financial Capability Study Summary',
+      url: 'https://faireconomy.example.org/study',
+      publisher: 'Financial Capability Bureau',
+      position: 0,
+    },
+  ]);
 
-  console.log('[Seed] Database successfully seeded with 3 demo campaigns!');
-  process.exit(0);
+  await db.delete(schema.adCreatives).where(eq(schema.adCreatives.campaignId, DEMO_CAMP_3_ID));
+  await db.insert(schema.adCreatives).values({
+    campaignId: DEMO_CAMP_3_ID,
+    headline: 'Don’t Leave Employer Retirement Matches on the Table',
+    description:
+      'Interactive tools showing young graduates how small 401(k) contributions compound into hundreds of thousands over a career.',
+    cta: 'Try the Free Calculator',
+    imageUrl:
+      'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80',
+  });
+
+  await db.delete(schema.campaignTargeting).where(eq(schema.campaignTargeting.campaignId, DEMO_CAMP_3_ID));
+  await db.insert(schema.campaignTargeting).values({
+    campaignId: DEMO_CAMP_3_ID,
+    locations: ['National Urban Centers', 'College Towns'],
+    interests: ['Recent Graduates', 'Personal Finance', 'Career Development'],
+    channels: ['Meta (Instagram & Facebook)', 'Google Display Network', 'Educational Newsletters'],
+    audienceDescription: 'Adults aged 20–30 starting full-time employment.',
+  });
+
+  console.log('[Seed] Database successfully seeded with 3 deterministic demo campaigns!');
 }
 
-seed().catch((err) => {
-  console.error('[Seed] Error seeding database:', err);
-  process.exit(1);
-});
+seed()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('[Seed] Error seeding database:', err);
+    process.exit(1);
+  });

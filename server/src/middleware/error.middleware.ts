@@ -10,7 +10,7 @@ export function errorHandler(
   _next: NextFunction
 ): Response {
   if (err instanceof AppError) {
-    return apiError(res, err.statusCode, err.code, err.message);
+    return apiError(res, err.statusCode, err.code, err.message, err.details);
   }
 
   if (err instanceof ZodError) {

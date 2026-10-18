@@ -1,110 +1,112 @@
 # Campaign Amplify
 
-A mobile platform for community-funded message amplification and distribution built with **React Native**, **Expo (SDK 58)**, and **TypeScript**, powered by **Bun**.
+A mobile platform for community-funded message amplification and distribution built with **React Native**, **Expo (SDK 58)**, **TypeScript**, and **Express + Drizzle ORM + Neon PostgreSQL**, powered by **Bun**.
 
 > **Important Concept**: Campaign Amplify is **NOT a donation platform**. Backer contributions directly fund targeted advertising and digital media placement to amplify important civic, environmental, and public-interest messages to new audiences.
 
 ---
 
-## Tech Stack & Architecture
+## 🛠️ Tech Stack & Architecture
 
-- **Framework**: React Native 0.88, Expo SDK 58
-- **Navigation & Routing**: Expo Router v4 (file-based routing under `src/app/`)
-- **Package Manager**: [Bun](https://bun.sh/) (always use `bun` / `bunx`)
-- **State Management**:
-  - [Zustand](https://github.com/pmndrs/zustand) with `@react-native-async-storage/async-storage` persistence
-  - `useCampaignDraftStore`: 5-step draft persistence with debounced autosave
-  - `useMyCampaignsStore`: local store for submitted campaigns (`SUBMITTED_FOR_REVIEW`)
-  - `useContributionStore`: contributions and simulated payments history
-  - `useCampaignFundingStore`: local funding update overrides across mock and user campaigns
-- **Data Fetching & Cache**: [TanStack Query v5](https://tanstack.com/query) (`@tanstack/react-query`)
-- **Validation**: [Zod](https://zod.dev/) 5-step schema validation (`basics`, `story`, `visuals`, `reach`, `submit`)
-- **UI & Icons**: `@expo/vector-icons` (Ionicons), `expo-image`, custom design system (`Palette`, `Spacing`, `Typography`)
+- **Mobile Client**:
+  - React Native 0.88, Expo SDK 58
+  - Navigation: Expo Router v4 (file-based routing under `src/app/`)
+  - State Management: [Zustand](https://github.com/pmndrs/zustand) with `@react-native-async-storage/async-storage` local persistence
+  - Data Fetching: [TanStack Query v5](https://tanstack.com/query) (`@tanstack/react-query`) + Axios
+  - Validation: [Zod](https://zod.dev/)
+  - Package Manager: [Bun](https://bun.sh/) (use `bun` / `bunx` exclusively)
+- **Backend API**:
+  - Express.js 4.21, TypeScript 5.7
+  - Database: [Neon](https://neon.tech/) Serverless PostgreSQL
+  - ORM: Drizzle ORM 0.38 + Drizzle Kit
+  - Located in `server/`
 
 ---
 
-## Getting Started
+## 🚀 Dual Mode Architecture (Local Mode vs. API Mode)
 
-### 1. Prerequisites
+The application supports both an offline-capable local prototype mode and a live PostgreSQL backend mode.
 
-Ensure [Bun](https://bun.sh/) is installed:
-```bash
-curl -fsSL https://bun.sh/install | bash
-```
+### 1. Local Mode (`EXPO_PUBLIC_USE_API=false`)
+- Operates entirely client-side using Zustand stores, mock campaigns, and local `AsyncStorage`.
+- Campaign creation drafts are preserved in device storage.
+- Ideal for fast offline demos, testing UI flows, and presentations without internet or database configuration.
 
-### 2. Install Dependencies
+### 2. API Mode (`EXPO_PUBLIC_USE_API=true`)
+- Uses Axios to communicate with the Express + Neon PostgreSQL backend.
+- **Read Path**: Explore and Campaign Detail query live PostgreSQL tables with server-side sorting (`newest`, `most_funded`, `ending_soon`, `featured`), text search, and category filtering.
+- **Write Path**: 5-step campaign creation creates a server draft (`POST /campaigns`), persists step updates (`PATCH /basics`, `/story`, `/visuals`, `/reach`), and submits the campaign (`POST /submit`) with server-side completeness validation.
+- **Offline Resiliency**: Device AsyncStorage drafts remain intact as an offline cache. If a network call fails, the draft is still saved on the device with a user-friendly sync notification.
 
+---
+
+## 📱 Running the Application
+
+### 1. Install Dependencies
 ```bash
 bun install
+cd server && bun install && cd ..
 ```
 
-### 3. Start Development Server
-
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env`:
 ```bash
-# Start Metro bundler with interactive controls
+cp .env.example .env
+```
+
+Device-specific API URLs:
+- **iOS Simulator**: `EXPO_PUBLIC_API_URL=http://localhost:5001/api/v1`
+- **Android Emulator**: `EXPO_PUBLIC_API_URL=http://10.0.2.2:5001/api/v1`
+- **Physical Device**: `EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:5001/api/v1`
+
+### 3. Backend Setup & Seed
+```bash
+cd server
+cp .env.example .env # Configure your Neon DATABASE_URL
+bun run db:migrate
+bun run db:seed
+bun run dev
+```
+
+### 4. Start Expo Mobile App
+In the root directory:
+```bash
 bun expo start
-
-# Or start directly for web testing
-bun expo start --web
 ```
 
-### 4. Running on Devices & Emulators
+Press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with Expo Go.
+
+---
+
+## 📋 Available Commands (Bun Only)
 
 ```bash
-# Run on Android emulator / connected device
-bun expo run:android
-
-# Run on iOS simulator (macOS required)
-bun expo run:ios
-```
-
-### 5. Typecheck & Code Health
-
-```bash
-bunx tsc --noEmit
-bunx expo-doctor
+bun expo start              # Start Metro bundler
+bunx tsc --noEmit           # Root TypeScript check
+cd server && bun run typecheck # Server TypeScript check
+bun run db:migrate          # Run Drizzle migrations
+bun run db:seed             # Populate idempotent demo data
+bun run server              # Start backend dev server
 ```
 
 ---
 
-## Core Flows
+## 🌐 Backend API Summary
 
-### 1. Campaign Creator Flow
-1. **Entry**: Start new campaign or resume saved local draft with step restoration.
-2. **Step 1 - Basics**: Title (max 60 chars), topic category, creator attribution, short summary (max 240 chars), cover image picker.
-3. **Step 2 - Story**: Editorial narrative, headline, lead intro, structured supporting research links with live preview.
-4. **Step 3 - Visuals**: Independent campaign cover vs ad creative hook, call-to-action selector, real-time social ad card preview.
-5. **Step 4 - Reach & Targeting**: Geographic location tags, audience interest targeting, channel preferences, campaign duration (7–60 days).
-6. **Step 5 - Review & Submit**: Amplification funding goal selection ($100–$1,000,000), real-time use-of-funds breakdown, full 5-step Zod validation. Incomplete sections prompt the user with direct navigation to the first invalid step.
-7. **Status**: Creates a campaign with status `SUBMITTED_FOR_REVIEW` and structured story details.
-
-### 2. Backer Contribution Flow
-1. **Campaign Detail**: View substantiated message, creator, funding progress, and inspect supporting sources with external browser linking (`Linking.openURL`).
-2. **Choose Contribution** (`/contribution/[campaignId]`): Select preset ($10, $25, $50, $100, $250) or custom numeric amount. Real-time fee calculation and estimated impressions preview.
-3. **Review Contribution** (`/contribution/review`): Full transparency breakdown (85% advertising, 10% platform, 5% processing).
-4. **Simulated Payment** (`/contribution/payment`): Demo sandbox payment form with test card autofill (`4242 4242 4242 4242`). Supports simulated success and failure testing. Sensitive card details are never stored or persisted.
-5. **Success / Failure**:
-   - On success: Payment reference issued, local campaign funding immediately incremented, TanStack query cache invalidated, receipt generated.
-   - On failure: Friendly diagnostic screen, no campaign funding added.
-6. **Receipt** (`/contribution/receipt`): Itemized breakdown of advertising allocation, platform fees, reference code, and date.
-7. **Activity**: View all past backed contributions and access receipts at any time.
+- `GET  /api/v1/health` - Process health check
+- `GET  /api/v1/ready` - Database connectivity probe (`SELECT 1`)
+- `GET  /api/v1/campaigns` - List public campaigns (with `search`, `sort`, `category`, pagination)
+- `GET  /api/v1/campaigns/:id` - Full campaign detail (including editorial story, sources, and targeting)
+- `POST /api/v1/campaigns` - Create new campaign draft (`status: DRAFT`)
+- `PATCH /api/v1/campaigns/:id/basics` - Step 1: Basics
+- `PATCH /api/v1/campaigns/:id/story` - Step 2: Narrative & sources (atomic transaction)
+- `PATCH /api/v1/campaigns/:id/visuals` - Step 3: Social ad creative (upsert)
+- `PATCH /api/v1/campaigns/:id/reach` - Step 4: Audience targeting (upsert) & duration sync
+- `POST /api/v1/campaigns/:id/submit` - Step 5: Complete campaign validation & transition to `SUBMITTED_FOR_REVIEW`
 
 ---
 
-## Centralized Policies & Calculations
+## 🔒 Security & Scope Boundaries
 
-- **Fees (`Config.feeStructure`)**:
-  - Direct Paid Ad Placement: **85%**
-  - Platform Operations & Review: **10%**
-  - Payment Processing: **5%**
-- **Estimated Impressions (`estimateDirectReach`)**:
-  - Calculated directly from the 85% advertising allocation (20–30 impressions per advertising dollar).
-  - A $100 contribution → $85 ad budget → **1,700–2,550 Estimated Impressions**.
-- **Lifecycle Pipeline**:
-  `SUBMITTED_FOR_REVIEW` → `UNDER_REVIEW` → `APPROVED` → `FUNDING` → `FUNDING_GOAL_REACHED` → `DISTRIBUTION_PREPARATION` → `PROMOTING` → `COMPLETED`.
-
----
-
-## License
-
-Private repository. All rights reserved.
+- **Demo Identity**: Current write endpoints use a controlled demo creator identifier until JWT authentication is implemented in subsequent phases.
+- **Contributions**: Contributions and payments are simulated on the client in this phase to prevent mock contributions from mutating live campaign rows without dedicated payment verification.

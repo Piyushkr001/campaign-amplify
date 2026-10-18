@@ -20,6 +20,8 @@ import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator
 import { AdCreativePreview } from '@/components/create/AdCreativePreview';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { CampaignVisualsSchema } from '@/schemas/campaign.schema';
+import { Config } from '@/constants/config';
+import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
 
 const CTA_OPTIONS = ['Learn More', 'Read Report', 'Support Message', 'Take Action', 'View Findings'];
@@ -106,7 +108,7 @@ export default function CreateVisualsScreen() {
     }
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     updateFields({
       coverImage,
       adImage,
@@ -116,7 +118,24 @@ export default function CreateVisualsScreen() {
     });
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setSaveBannerText('Visuals & Ad draft saved');
+
+    if (Config.useApi && draft.id) {
+      try {
+        await CampaignService.saveVisuals(draft.id, {
+          coverImage,
+          adImage,
+          adHeadline,
+          adDescription,
+          adCTA,
+        });
+        setSaveBannerText('Creative saved to cloud & device');
+      } catch (err) {
+        console.warn('[CreateVisuals] Cloud sync failed:', err);
+        setSaveBannerText('Saved on this device (offline mode)');
+      }
+    } else {
+      setSaveBannerText('Visuals & Ad draft saved');
+    }
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
@@ -150,6 +169,17 @@ export default function CreateVisualsScreen() {
       currentStep: 4,
     });
     setCurrentStep(4);
+
+    if (Config.useApi && draft.id) {
+      CampaignService.saveVisuals(draft.id, {
+        coverImage,
+        adImage,
+        adHeadline,
+        adDescription,
+        adCTA,
+      }).catch((err) => console.warn('[CreateVisuals] Background sync warning:', err));
+    }
+
     router.push('/create-campaign/reach');
   };
 
