@@ -12,3 +12,4 @@ authRouter.post('/login', validateBody(loginSchema), AuthController.login);
 
 // Protected session endpoint
 authRouter.get('/me', authenticateUser, AuthController.getMe);
+
