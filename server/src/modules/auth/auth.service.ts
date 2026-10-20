@@ -47,23 +47,34 @@ export const AuthService = {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(input.password, salt);
 
-    const user = await AuthRepository.createUser({
-      email: normalizedEmail,
-      passwordHash,
-      displayName: input.displayName.trim(),
-      role: 'USER', // Registration always creates a normal USER
-    });
+    try {
+      const user = await AuthRepository.createUser({
+        email: normalizedEmail,
+        passwordHash,
+        displayName: input.displayName.trim(),
+        role: 'USER', // Registration always creates a normal USER
+      });
 
-    const accessToken = AuthService.signToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
+      const accessToken = AuthService.signToken({
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      });
 
-    return {
-      user,
-      accessToken,
-    };
+      return {
+        user,
+        accessToken,
+      };
+    } catch (err: any) {
+      if (
+        err?.code === '23505' ||
+        err?.message?.includes('duplicate key') ||
+        err?.message?.includes('users_email_unique')
+      ) {
+        throw new EmailAlreadyExistsError(`An account with email "${normalizedEmail}" already exists.`);
+      }
+      throw err;
+    }
   },
 
   login: async (input: LoginInput): Promise<AuthSessionDTO> => {

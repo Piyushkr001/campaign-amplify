@@ -10,18 +10,6 @@ import {
 } from './review.schemas';
 import { apiSuccess } from '../../utils/response';
 
-async function getReviewerUserId(req: Request): Promise<string> {
-  if (req.user?.id) {
-    return req.user.id;
-  }
-  const headerId = req.headers['x-actor-user-id'];
-  if (typeof headerId === 'string' && headerId.trim().length > 0) {
-    return headerId.trim();
-  }
-  const { resolveDemoReviewerId } = await import('../../utils/demo-identity');
-  return resolveDemoReviewerId();
-}
-
 export const ReviewController = {
   getQueue: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -46,7 +34,7 @@ export const ReviewController = {
   startReview: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params as unknown as ReviewCampaignIdParam;
-      const reviewerId = await getReviewerUserId(req);
+      const reviewerId = req.user!.id;
       const updated = await ReviewService.startReview(id, reviewerId);
       apiSuccess(res, {
         id: updated.id,
@@ -62,7 +50,7 @@ export const ReviewController = {
     try {
       const { id } = req.params as unknown as ReviewCampaignIdParam;
       const { feedback } = req.body as RequestChangesInput;
-      const reviewerId = await getReviewerUserId(req);
+      const reviewerId = req.user!.id;
       const updated = await ReviewService.requestChanges(id, feedback, reviewerId);
       apiSuccess(res, {
         id: updated.id,
@@ -79,7 +67,7 @@ export const ReviewController = {
     try {
       const { id } = req.params as unknown as ReviewCampaignIdParam;
       const input = req.body as ApproveCampaignInput;
-      const reviewerId = await getReviewerUserId(req);
+      const reviewerId = req.user!.id;
       const updated = await ReviewService.approve(id, input?.note, reviewerId);
       apiSuccess(res, {
         id: updated.id,
@@ -95,7 +83,7 @@ export const ReviewController = {
     try {
       const { id } = req.params as unknown as ReviewCampaignIdParam;
       const { reason } = req.body as RejectCampaignInput;
-      const reviewerId = await getReviewerUserId(req);
+      const reviewerId = req.user!.id;
       const updated = await ReviewService.reject(id, reason, reviewerId);
       apiSuccess(res, {
         id: updated.id,
@@ -112,7 +100,7 @@ export const ReviewController = {
     try {
       const { id } = req.params as unknown as ReviewCampaignIdParam;
       const input = req.body as StartFundingInput;
-      const reviewerId = await getReviewerUserId(req);
+      const reviewerId = req.user!.id;
       const updated = await ReviewService.startFunding(id, input?.note, reviewerId);
       apiSuccess(res, {
         id: updated.id,

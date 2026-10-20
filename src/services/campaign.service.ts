@@ -251,8 +251,9 @@ export const CampaignService = {
         if (response.data?.success && Array.isArray(response.data?.data)) {
           return response.data.data.map(mapDtoToCampaign);
         }
-      } catch (err) {
-        if (Config.strictApi) {
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (Config.strictApi || status === 401 || status === 403) {
           throw err;
         }
         console.warn('[CampaignService] Failed to fetch /me/campaigns, using local fallback:', err);
@@ -276,8 +277,9 @@ export const CampaignService = {
         if (response.data?.success && response.data?.data) {
           return mapDtoToCampaign(response.data.data);
         }
-      } catch (err) {
-        if (Config.strictApi) {
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (Config.strictApi || status === 401 || status === 403) {
           throw err;
         }
         console.warn(`[CampaignService] Failed to fetch /me/campaigns/${id}, using local fallback:`, err);

@@ -149,8 +149,9 @@ export const ReviewerService = {
         if (response.data?.success && Array.isArray(response.data?.data)) {
           return response.data.data.map(mapReviewerQueueDtoToCampaign);
         }
-      } catch (err) {
-        if (Config.strictApi) {
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (Config.strictApi || status === 401 || status === 403) {
           throw err;
         }
         console.warn('[ReviewerService] Failed to load /review/campaigns, using local fallback:', err);
@@ -177,8 +178,9 @@ export const ReviewerService = {
         if (response.data?.success && response.data?.data) {
           return mapApiDtoToCampaign(response.data.data);
         }
-      } catch (err) {
-        if (Config.strictApi) {
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (Config.strictApi || status === 401 || status === 403) {
           throw err;
         }
         console.warn(`[ReviewerService] Failed to load /review/campaigns/${id}, using local fallback:`, err);

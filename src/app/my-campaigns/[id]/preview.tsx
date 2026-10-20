@@ -18,6 +18,9 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CampaignStatusBadge } from '@/components/campaign/CampaignStatusBadge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuthStore } from '@/store/auth-store';
+import { Config } from '@/constants/config';
 import { useCreatorCampaign } from '@/hooks/useCampaigns';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import {
@@ -29,8 +32,30 @@ import {
 export default function CreatorCampaignPreviewScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, isAuthenticated } = useAuthStore();
+  const isAuthorized = !Config.useApi || (isAuthenticated && !user?.isGuest);
+
   const { data: campaign, isLoading } = useCreatorCampaign(id || '');
   const { loadCampaignIntoDraft } = useCampaignDraftStore();
+
+  if (!isAuthorized) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navBar}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to preview your campaign details and review comments."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   if (isLoading) {
     return (

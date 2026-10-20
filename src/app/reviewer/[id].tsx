@@ -17,11 +17,13 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { AppButton } from '@/components/ui/AppButton';
 import { CampaignStatusBadge } from '@/components/campaign/CampaignStatusBadge';
 import { ReviewSection } from '@/components/reviewer/ReviewSection';
 import { ReviewDecisionSheet } from '@/components/reviewer/ReviewDecisionSheet';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useAuthStore } from '@/store/auth-store';
 import { formatCurrency, formatReachRange } from '@/utils/formatters';
 import { Config } from '@/constants/config';
 import { useReviewCampaign } from '@/hooks/useReviewer';
@@ -32,6 +34,9 @@ import { getEffectiveCampaign } from '@/utils/effective-campaign';
 export default function ReviewerDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, isAuthenticated } = useAuthStore();
+  const isAuthorized = isAuthenticated && (user?.role === 'REVIEWER' || user?.role === 'ADMIN');
+
   const {
     getCampaignById,
     advanceToDistributionPrep,
@@ -47,6 +52,29 @@ export default function ReviewerDetailScreen() {
 
   // Dialog state for feedback/rejection input
   const [modalMode, setModalMode] = useState<'CHANGES' | 'REJECT' | null>(null);
+
+  if (!isAuthorized) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Reviewer Access Required"
+          description="This portal is restricted to authorized platform reviewers and administrators."
+          actionTitle="Sign In as Reviewer"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   if (Config.useApi && isApiLoading && !campaign) {
     return (

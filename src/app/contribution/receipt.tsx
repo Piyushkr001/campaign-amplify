@@ -20,11 +20,13 @@ import { formatCurrency, formatReachRange } from '@/utils/formatters';
 
 import { Config } from '@/constants/config';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useAuthStore } from '@/store/auth-store';
 import { useContributionReceipt } from '@/hooks/useContributions';
 import { ActivityIndicator } from 'react-native';
 
 export default function ContributionReceiptScreen() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
   const { contributionId, paymentId } = useLocalSearchParams<{
     contributionId?: string;
     paymentId?: string;
@@ -32,9 +34,33 @@ export default function ContributionReceiptScreen() {
 
   const { getContributionById, getPaymentById } = useContributionStore();
 
+  if (Config.useApi && (!isAuthenticated || user?.isGuest)) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navRow}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to view your official campaign sponsorship receipt."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
+
   const { data: apiReceipt, isLoading: isApiLoading } = useContributionReceipt(contributionId || '');
-  const localContribution = contributionId ? getContributionById(contributionId) : undefined;
-  const localPayment = paymentId ? getPaymentById(paymentId) : undefined;
+  const localContribution = (!Config.useApi && contributionId) ? getContributionById(contributionId) : undefined;
+  const localPayment = (!Config.useApi && paymentId) ? getPaymentById(paymentId) : undefined;
 
   // Strict validation: In API mode verify backend receipt, in local mode verify store
   const isTransactionValid = Config.useApi
@@ -43,7 +69,7 @@ export default function ContributionReceiptScreen() {
       (localContribution.status === 'SUCCESS' || localContribution.status === 'CONFIRMED') &&
       (!localPayment || localPayment.status === 'SUCCESS');
 
-  const campaignId = apiReceipt?.campaign.id || localContribution?.campaignId || localPayment?.campaignId || '';
+  const campaignId = apiReceipt?.campaign.id || (Config.useApi ? '' : (localContribution?.campaignId || localPayment?.campaignId || ''));
   const { data: campaign } = useCampaign(campaignId);
 
   if (Config.useApi && isApiLoading) {

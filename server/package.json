@@ -18,7 +18,8 @@
     "test:lifecycle": "bun run test-review-lifecycle.ts",
     "test:contribution": "bun run test-contribution-lifecycle.ts",
     "test:auth": "bun run test-auth.ts",
-    "test:idempotency": "bun run test-payment-idempotency.ts"
+    "test:idempotency": "bun run test-payment-idempotency.ts",
+    "test:terminal-race": "bun run test-payment-terminal-race.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

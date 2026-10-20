@@ -7,19 +7,6 @@ import {
   ContributionIdParam,
 } from './contribution.schemas';
 import { apiSuccess } from '../../utils/response';
-import { resolveDemoBackerId } from '../../utils/demo-identity';
-
-async function getBackerUserId(req: Request): Promise<string> {
-  if (req.user?.id) {
-    return req.user.id;
-  }
-  const headerId = req.headers['x-actor-user-id'];
-  if (typeof headerId === 'string' && headerId.trim().length > 0) {
-    return headerId.trim();
-  }
-  return resolveDemoBackerId();
-}
-
 export const ContributionController = {
   getQuote: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -36,7 +23,7 @@ export const ContributionController = {
     try {
       const { id } = req.params as unknown as CampaignContributionParam;
       const { amount } = req.body as CreateContributionInput;
-      const actorUserId = await getBackerUserId(req);
+      const actorUserId = req.user!.id;
       const contribution = await ContributionService.createContribution({
         campaignId: id,
         amount,
@@ -50,7 +37,7 @@ export const ContributionController = {
 
   listMyContributions: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const actorUserId = await getBackerUserId(req);
+      const actorUserId = req.user!.id;
       const contributions = await ContributionService.getMyContributions(actorUserId);
       apiSuccess(res, contributions);
     } catch (err) {
@@ -61,7 +48,7 @@ export const ContributionController = {
   getMyContributionById: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params as unknown as ContributionIdParam;
-      const actorUserId = await getBackerUserId(req);
+      const actorUserId = req.user!.id;
       const detail = await ContributionService.getMyContributionById(id, actorUserId);
       apiSuccess(res, detail);
     } catch (err) {
@@ -72,7 +59,7 @@ export const ContributionController = {
   getMyReceipt: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params as unknown as ContributionIdParam;
-      const actorUserId = await getBackerUserId(req);
+      const actorUserId = req.user!.id;
       const receipt = await ContributionService.getMyReceipt(id, actorUserId);
       apiSuccess(res, receipt);
     } catch (err) {
@@ -83,7 +70,7 @@ export const ContributionController = {
   cancelMyContribution: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params as unknown as ContributionIdParam;
-      const actorUserId = await getBackerUserId(req);
+      const actorUserId = req.user!.id;
       const result = await ContributionService.cancelContribution(id, actorUserId);
       apiSuccess(res, result);
     } catch (err) {

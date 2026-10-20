@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index';
 import { env } from '../../config/env';
 import { CAMPAIGN_POLICY } from '../../config/campaign-policy';
@@ -10,11 +10,14 @@ import {
   ContributionReceiptDTO,
 } from './contribution.types';
 import {
+  AppError,
   NotFoundError,
   DatabaseUnavailableError,
   CampaignNotBackableError,
   ForbiddenError,
   BadRequestError,
+  ContributionAccessDeniedError,
+  ContributionStateConflictError,
 } from '../../utils/errors';
 
 export const ContributionRepository = {
@@ -69,7 +72,7 @@ export const ContributionRepository = {
         currency: 'USD',
       };
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof CampaignNotBackableError) throw err;
+      if (err instanceof AppError) throw err;
       console.error('[ContributionRepository] Error in calculateQuote:', err);
       throw new DatabaseUnavailableError('Failed to generate contribution quote.');
     }
@@ -150,7 +153,7 @@ export const ContributionRepository = {
         };
       });
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof CampaignNotBackableError) throw err;
+      if (err instanceof AppError) throw err;
       console.error('[ContributionRepository] Error in createPending:', err);
       throw new DatabaseUnavailableError('Failed to create contribution record.');
     }
@@ -167,33 +170,10 @@ export const ContributionRepository = {
     try {
       const db = getDb();
       return await db.transaction(async (tx) => {
-        const rows = await tx
-          .select()
-          .from(schema.contributions)
-          .where(eq(schema.contributions.id, contributionId as any))
-          .limit(1);
-
-        const contribution = rows[0];
-        if (!contribution) {
-          throw new NotFoundError(`Contribution "${contributionId}" not found.`);
-        }
-
-        if (actorUserId && contribution.userId && contribution.userId !== actorUserId) {
-          throw new ForbiddenError(
-            'You do not have permission to cancel this contribution.',
-            'CONTRIBUTION_ACCESS_DENIED'
-          );
-        }
-
-        if (contribution.status !== 'PENDING') {
-          throw new BadRequestError(
-            `Cannot cancel contribution with status "${contribution.status}". Only PENDING contributions can be cancelled.`,
-            'CONTRIBUTION_NOT_PENDING'
-          );
-        }
-
         const now = new Date();
-        const [updated] = await tx
+
+        // Atomically cancel ONLY if status is PENDING and ownership matches
+        const cancelledRows = await tx
           .update(schema.contributions)
           .set({
             status: 'CANCELLED',
@@ -203,21 +183,56 @@ export const ContributionRepository = {
           .where(
             and(
               eq(schema.contributions.id, contributionId as any),
+              actorUserId ? eq(schema.contributions.userId, actorUserId as any) : sql`TRUE`,
               eq(schema.contributions.status, 'PENDING')
             )
           )
           .returning();
 
-        return {
-          id: updated.id,
-          status: updated.status,
-          cancelledAt: now.toISOString(),
-        };
+        if (cancelledRows.length > 0) {
+          return {
+            id: cancelledRows[0].id,
+            status: cancelledRows[0].status,
+            cancelledAt: (cancelledRows[0].cancelledAt || now).toISOString(),
+          };
+        }
+
+        // Zero rows updated: inspect record to return exact domain error
+        const [latest] = await tx
+          .select()
+          .from(schema.contributions)
+          .where(eq(schema.contributions.id, contributionId as any))
+          .limit(1);
+
+        if (!latest) {
+          throw new NotFoundError(`Contribution "${contributionId}" not found.`);
+        }
+
+        if (actorUserId && (!latest.userId || latest.userId !== actorUserId)) {
+          throw new ContributionAccessDeniedError(
+            'You do not have permission to cancel this contribution.'
+          );
+        }
+
+        if (latest.status === 'CONFIRMED') {
+          throw new ContributionStateConflictError(
+            'Contribution has already been CONFIRMED and cannot be cancelled.'
+          );
+        }
+
+        if (latest.status === 'CANCELLED') {
+          throw new BadRequestError(
+            'Contribution is already CANCELLED.',
+            'CONTRIBUTION_ALREADY_CANCELLED'
+          );
+        }
+
+        throw new ContributionStateConflictError(
+          `Cannot cancel contribution with status "${latest.status}". Only PENDING contributions can be cancelled.`
+        );
       });
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof ForbiddenError || err instanceof BadRequestError) {
-        throw err;
-      }
+      if (err instanceof AppError) throw err;
       console.error('[ContributionRepository] Error in cancelPending:', err);
       throw new DatabaseUnavailableError('Failed to cancel contribution.');
     }
@@ -294,8 +309,10 @@ export const ContributionRepository = {
         throw new NotFoundError(`Contribution "${contributionId}" not found.`);
       }
 
-      if (actorUserId && row.contribution.userId && row.contribution.userId !== actorUserId) {
-        throw new ForbiddenError('You do not have permission to view this contribution.');
+      if (actorUserId && (!row.contribution.userId || row.contribution.userId !== actorUserId)) {
+        throw new ContributionAccessDeniedError(
+          'You do not have permission to view this contribution.'
+        );
       }
 
       const paymentRows = await db
@@ -344,7 +361,7 @@ export const ContributionRepository = {
         confirmedAt: row.contribution.confirmedAt?.toISOString() || null,
       };
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof ForbiddenError) throw err;
+      if (err instanceof AppError) throw err;
       console.error('[ContributionRepository] Error in findDetailById:', err);
       throw new DatabaseUnavailableError('Failed to fetch contribution detail.');
     }
@@ -375,8 +392,10 @@ export const ContributionRepository = {
         throw new NotFoundError(`Contribution "${contributionId}" not found.`);
       }
 
-      if (actorUserId && row.contribution.userId && row.contribution.userId !== actorUserId) {
-        throw new ForbiddenError('You do not have permission to view this receipt.');
+      if (actorUserId && (!row.contribution.userId || row.contribution.userId !== actorUserId)) {
+        throw new ContributionAccessDeniedError(
+          'You do not have permission to view this receipt.'
+        );
       }
 
       if (row.contribution.status !== 'CONFIRMED') {
@@ -454,9 +473,7 @@ export const ContributionRepository = {
           'Demo payment receipt. No real payment processor was used. This contribution directly funds targeted campaign message distribution and community amplification.',
       };
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof ForbiddenError || err instanceof BadRequestError) {
-        throw err;
-      }
+      if (err instanceof AppError) throw err;
       console.error('[ContributionRepository] Error in findReceipt:', err);
       throw new DatabaseUnavailableError('Failed to fetch contribution receipt.');
     }

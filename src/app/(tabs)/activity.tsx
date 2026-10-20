@@ -14,6 +14,7 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useContributionStore } from '@/store/contribution-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useAuthStore } from '@/store/auth-store';
 import { formatCurrency, formatReachRange } from '@/utils/formatters';
 import { CampaignStatus } from '@/types/campaign';
 import { Config } from '@/constants/config';
@@ -35,12 +36,27 @@ interface LifecycleEvent {
 
 export default function ActivityScreen() {
   const [activeTab, setActiveTab] = useState<ActivityTab>('all');
+  const { user, isAuthenticated } = useAuthStore();
   const { contributions } = useContributionStore();
   const { campaigns } = useMyCampaignsStore();
   const { data: apiContributions } = useMyContributions();
 
-  const userContributions = Config.useApi && apiContributions
-    ? apiContributions.map((ac) => {
+  if (Config.useApi && (!isAuthenticated || user?.isGuest)) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to view your campaign activity, backed projects, and live updates."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
+
+  const userContributions = Config.useApi
+    ? (apiContributions || []).map((ac) => {
         const adBudget = Math.round(ac.amount * 0.85);
         return {
           id: ac.id,

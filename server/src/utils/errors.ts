@@ -166,3 +166,13 @@ export class ContributionAccessDeniedError extends AppError {
   }
 }
 
+export class ContributionStateConflictError extends AppError {
+  constructor(
+    message = 'Contribution is not in a valid state for this action.',
+    details?: unknown
+  ) {
+    super(message, 409, 'CONTRIBUTION_STATE_CONFLICT', details);
+  }
+}
+
+

@@ -16,6 +16,7 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { AppButton } from '@/components/ui/AppButton';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CampaignStatusBadge } from '@/components/campaign/CampaignStatusBadge';
@@ -23,6 +24,7 @@ import { CampaignStatusTimeline } from '@/components/campaign/CampaignStatusTime
 import { ReviewFeedbackCard } from '@/components/campaign/ReviewFeedbackCard';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { useAuthStore } from '@/store/auth-store';
 import { useCreatorCampaign } from '@/hooks/useCampaigns';
 import { Config } from '@/constants/config';
 import {
@@ -37,9 +39,35 @@ import { ActivityIndicator } from 'react-native';
 export default function MyCampaignDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user, isAuthenticated } = useAuthStore();
+  const isAuthorized = !Config.useApi || (isAuthenticated && !user?.isGuest);
+
   const { getCampaignById } = useMyCampaignsStore();
   const { loadCampaignIntoDraft } = useCampaignDraftStore();
   const { data: apiCampaign, isLoading: isApiLoading } = useCreatorCampaign(id || '');
+
+  if (!isAuthorized) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to view campaign details, review status, and management controls."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   const localCampaign = id ? getCampaignById(id) : undefined;
   const rawCampaign = Config.useApi ? apiCampaign || localCampaign : localCampaign;

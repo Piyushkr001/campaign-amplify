@@ -19,7 +19,9 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppInput } from '@/components/ui/AppInput';
 import { CategoryChip } from '@/components/ui/CategoryChip';
 import { CampaignStepIndicator } from '@/components/create/CampaignStepIndicator';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { useAuthStore } from '@/store/auth-store';
 import { Config } from '@/constants/config';
 import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
@@ -33,6 +35,7 @@ const SAMPLE_COVERS = [
 
 export default function CreateBasicsScreen() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
   const {
     draft,
     updateField,
@@ -43,6 +46,30 @@ export default function CreateBasicsScreen() {
     lastSavedAt,
     hasHydrated,
   } = useCampaignDraftStore();
+
+  if (Config.useApi && (!isAuthenticated || user?.isGuest)) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={({ pressed }) => [styles.backBtn, pressed && styles.btnPressed]}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in with your Campaign Amplify account to create and publish campaigns."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   const [title, setTitle] = useState(draft.title || '');
   const [category, setCategory] = useState<CategoryName>(draft.category || 'Environment');

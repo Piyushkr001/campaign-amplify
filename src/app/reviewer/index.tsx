@@ -25,7 +25,7 @@ type ReviewQueueTab = 'PENDING' | 'APPROVED' | 'ALL';
 export default function ReviewerQueueScreen() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
-  const isAuthorized = !Config.useApi || (isAuthenticated && (user?.role === 'REVIEWER' || user?.role === 'ADMIN'));
+  const isAuthorized = isAuthenticated && (user?.role === 'REVIEWER' || user?.role === 'ADMIN');
 
   const { campaigns: localCampaigns, hasHydrated } = useMyCampaignsStore();
   const [activeTab, setActiveTab] = useState<ReviewQueueTab>('PENDING');

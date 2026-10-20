@@ -29,9 +29,13 @@ import {
 } from '@/constants/campaign-status';
 import { Campaign } from '@/types/campaign';
 import { getEffectiveCampaign } from '@/utils/effective-campaign';
+import { useAuthStore } from '@/store/auth-store';
 
 export default function MyCampaignsScreen() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
+  const isAuthorized = !Config.useApi || (isAuthenticated && !user?.isGuest);
+
   const { campaigns: localCampaigns, hasHydrated } = useMyCampaignsStore();
   const { draft, hasMeaningfulDraft, resetDraft } = useCampaignDraftStore();
   const [selectedTab, setSelectedTab] = useState<CreatorDashboardTab>('ALL');
@@ -43,6 +47,31 @@ export default function MyCampaignsScreen() {
     isError,
     refetch,
   } = useCreatorCampaigns();
+
+  if (!isAuthorized) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+          <Text style={styles.navTitle}>Creator Studio</Text>
+          <View style={{ width: 36 }} />
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to view your created campaigns, manage submissions, and review verification feedback."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   const activeCampaigns = Config.useApi && apiCampaigns ? apiCampaigns : localCampaigns;
   const isLoading = Config.useApi ? isApiLoading && !apiCampaigns : !hasHydrated;

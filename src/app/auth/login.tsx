@@ -151,30 +151,32 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Quick Demo Logins for Pair Programming / Review Testing */}
-        <View style={styles.demoSection}>
-          <Text style={styles.demoTitle}>DEMO ACCOUNTS (DEVELOPMENT)</Text>
-          <View style={styles.demoButtonsRow}>
-            <TouchableOpacity
-              style={styles.demoChip}
-              onPress={() => handleQuickDemo('USER')}
-              disabled={isLoading}>
-              <Text style={styles.demoChipText}>User / Backer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.demoChip, styles.demoChipReviewer]}
-              onPress={() => handleQuickDemo('REVIEWER')}
-              disabled={isLoading}>
-              <Text style={styles.demoChipReviewerText}>Reviewer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.demoChip, styles.demoChipAdmin]}
-              onPress={() => handleQuickDemo('ADMIN')}
-              disabled={isLoading}>
-              <Text style={styles.demoChipAdminText}>Admin</Text>
-            </TouchableOpacity>
+        {/* Quick Demo Logins for Pair Programming / Review Testing (Development only) */}
+        {(__DEV__ || process.env.EXPO_PUBLIC_APP_ENV === 'development') ? (
+          <View style={styles.demoSection}>
+            <Text style={styles.demoTitle}>DEMO ACCOUNTS (DEVELOPMENT)</Text>
+            <View style={styles.demoButtonsRow}>
+              <TouchableOpacity
+                style={styles.demoChip}
+                onPress={() => handleQuickDemo('USER')}
+                disabled={isLoading}>
+                <Text style={styles.demoChipText}>User / Backer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.demoChip, styles.demoChipReviewer]}
+                onPress={() => handleQuickDemo('REVIEWER')}
+                disabled={isLoading}>
+                <Text style={styles.demoChipReviewerText}>Reviewer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.demoChip, styles.demoChipAdmin]}
+                onPress={() => handleQuickDemo('ADMIN')}
+                disabled={isLoading}>
+                <Text style={styles.demoChipAdminText}>Admin</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );

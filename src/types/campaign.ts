@@ -32,6 +32,7 @@ export interface CampaignSource {
 
 export interface CampaignDraft {
   id?: string;
+  ownerUserId?: string;
   mode: CampaignDraftMode;
   syncStatus: CampaignSyncStatus;
   lastSyncError?: string;

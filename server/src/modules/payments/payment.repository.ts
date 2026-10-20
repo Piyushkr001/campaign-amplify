@@ -10,6 +10,7 @@ import {
   BadRequestError,
   ForbiddenError,
   ContributionAccessDeniedError,
+  ContributionStateConflictError,
 } from '../../utils/errors';
 
 function generateDemoReference(): string {
@@ -49,10 +50,9 @@ export const PaymentRepository = {
         }
 
         // Ownership enforcement: Only the owning user can process payment for this contribution
-        if (params.actorUserId && contribution.userId && contribution.userId !== params.actorUserId) {
-          throw new ForbiddenError(
-            'You do not have permission to process payment for this contribution.',
-            'CONTRIBUTION_ACCESS_DENIED'
+        if (params.actorUserId && (!contribution.userId || contribution.userId !== params.actorUserId)) {
+          throw new ContributionAccessDeniedError(
+            'You do not have permission to process payment for this contribution.'
           );
         }
 
@@ -99,6 +99,12 @@ export const PaymentRepository = {
         }
 
         // 3. Verify contribution is PENDING before processing
+        if (contribution.status === 'CANCELLED') {
+          throw new ContributionStateConflictError(
+            'Contribution is CANCELLED and cannot be funded.'
+          );
+        }
+
         if (contribution.status !== 'PENDING') {
           throw new BadRequestError(
             `Cannot process payment for contribution with status "${contribution.status}". Only PENDING contributions can be processed.`,
@@ -178,8 +184,66 @@ export const PaymentRepository = {
           };
         }
 
-        // 6. Handle CANCELLED outcome
+        // 6. Handle CANCELLED outcome (Transactional & Concurrency-Safe)
         if (params.outcome === 'CANCELLED') {
+          // Atomically update contribution from PENDING to CANCELLED
+          const cancelledRows = await tx
+            .update(schema.contributions)
+            .set({
+              status: 'CANCELLED',
+              cancelledAt: now,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(schema.contributions.id, contribution.id),
+                eq(schema.contributions.status, 'PENDING')
+              )
+            )
+            .returning();
+
+          if (cancelledRows.length === 0) {
+            // Zero rows updated: Reload latest state to differentiate
+            const [latestContrib] = await tx
+              .select()
+              .from(schema.contributions)
+              .where(eq(schema.contributions.id, contribution.id))
+              .limit(1);
+
+            if (latestContrib?.status === 'CANCELLED') {
+              // Idempotent cancellation response
+              return {
+                success: false,
+                paymentId: 'idempotent-cancellation',
+                contributionId: contribution.id,
+                providerReference: 'DEMO-AMP-CANCELLED',
+                status: 'CANCELLED',
+                amount: contribution.amount,
+                campaignId: campaign.id,
+                campaignStatus: campaign.status,
+                campaignAmountRaised: campaign.amountRaised,
+                campaignFundingGoal: campaign.fundingGoal || 0,
+                campaignBackerCount: campaign.backerCount,
+                goalReached: false,
+                cardLast4: safeCardLast4,
+                message: 'Contribution already cancelled (idempotent response).',
+                createdAt: contribution.createdAt.toISOString(),
+                processedAt: (latestContrib.cancelledAt || now).toISOString(),
+              };
+            }
+
+            if (latestContrib?.status === 'CONFIRMED') {
+              throw new ContributionStateConflictError(
+                'Contribution was confirmed concurrently and cannot be cancelled.'
+              );
+            }
+
+            throw new ContributionStateConflictError(
+              `Contribution status is "${latestContrib?.status}". Cannot cancel.`
+            );
+          }
+
+          // Won cancellation: Record CANCELLED payment
           const [payment] = await tx
             .insert(schema.payments)
             .values({
@@ -193,16 +257,6 @@ export const PaymentRepository = {
               createdAt: now,
             })
             .returning();
-
-          // Mark contribution cancelled
-          await tx
-            .update(schema.contributions)
-            .set({
-              status: 'CANCELLED',
-              cancelledAt: now,
-              updatedAt: now,
-            })
-            .where(eq(schema.contributions.id, contribution.id));
 
           return {
             success: false,
@@ -289,9 +343,14 @@ export const PaymentRepository = {
             };
           }
 
-          throw new BadRequestError(
-            `Contribution status changed to "${latestContrib?.status || 'UNKNOWN'}". Cannot process payment.`,
-            'CONTRIBUTION_NOT_PENDING'
+          if (latestContrib?.status === 'CANCELLED') {
+            throw new ContributionStateConflictError(
+              'Contribution was cancelled concurrently and cannot be funded.'
+            );
+          }
+
+          throw new ContributionStateConflictError(
+            `Contribution status changed to "${latestContrib?.status || 'UNKNOWN'}". Cannot process payment.`
           );
         }
 

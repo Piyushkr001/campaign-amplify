@@ -21,7 +21,7 @@ export function createApp(): Express {
     cors({
       origin: '*', // Allow local Expo dev client & emulators
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-actor-user-id', 'x-actor-role'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     })
   );
   app.use(express.json());

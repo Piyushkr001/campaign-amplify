@@ -1,29 +1,9 @@
 import apiClient, { persistToken, clearPersistedToken, getPersistedToken } from './api';
-import { User, UserRole } from '@/types/user';
+import { User } from '@/types/user';
 import { Config } from '@/constants/config';
+import { AuthSessionApiDTO, AuthMeApiDTO, ApiUser, ApiUserRole } from '@/types/auth-api';
 
-export interface AuthResponseData {
-  user: {
-    id: string;
-    email: string;
-    displayName: string;
-    role: UserRole;
-    createdAt: string;
-  };
-  token: string;
-}
-
-export interface UserProfileResponseData {
-  user: {
-    id: string;
-    email: string;
-    displayName: string;
-    role: UserRole;
-    createdAt: string;
-  };
-}
-
-function mapApiUserToModel(apiUser: AuthResponseData['user']): User {
+function mapApiUserToModel(apiUser: ApiUser): User {
   return {
     id: apiUser.id,
     email: apiUser.email,
@@ -54,7 +34,7 @@ export const AuthService = {
     email: string;
     password: string;
     displayName: string;
-  }): Promise<{ user: User; token: string }> => {
+  }): Promise<{ user: User; accessToken: string }> => {
     if (!Config.useApi) {
       const mockUser: User = {
         id: 'local_user_' + Date.now(),
@@ -67,10 +47,10 @@ export const AuthService = {
         totalAmplifiedAmount: 0,
         createdAt: new Date().toISOString(),
       };
-      return { user: mockUser, token: 'local_demo_token' };
+      return { user: mockUser, accessToken: 'local_demo_token' };
     }
 
-    const response = await apiClient.post<{ success: boolean; data: AuthResponseData }>(
+    const response = await apiClient.post<{ success: boolean; data: AuthSessionApiDTO }>(
       '/auth/register',
       {
         email: input.email.trim().toLowerCase(),
@@ -79,20 +59,20 @@ export const AuthService = {
       }
     );
 
-    const { user, token } = response.data.data;
-    await persistToken(token);
+    const { user, accessToken } = response.data.data;
+    await persistToken(accessToken);
     return {
       user: mapApiUserToModel(user),
-      token,
+      accessToken,
     };
   },
 
   login: async (input: {
     email: string;
     password: string;
-  }): Promise<{ user: User; token: string }> => {
+  }): Promise<{ user: User; accessToken: string }> => {
     if (!Config.useApi) {
-      const role: UserRole = input.email.includes('reviewer')
+      const role: ApiUserRole = input.email.includes('reviewer')
         ? 'REVIEWER'
         : input.email.includes('admin')
         ? 'ADMIN'
@@ -108,10 +88,10 @@ export const AuthService = {
         totalAmplifiedAmount: 0,
         createdAt: new Date().toISOString(),
       };
-      return { user: mockUser, token: 'local_demo_token' };
+      return { user: mockUser, accessToken: 'local_demo_token' };
     }
 
-    const response = await apiClient.post<{ success: boolean; data: AuthResponseData }>(
+    const response = await apiClient.post<{ success: boolean; data: AuthSessionApiDTO }>(
       '/auth/login',
       {
         email: input.email.trim().toLowerCase(),
@@ -119,11 +99,11 @@ export const AuthService = {
       }
     );
 
-    const { user, token } = response.data.data;
-    await persistToken(token);
+    const { user, accessToken } = response.data.data;
+    await persistToken(accessToken);
     return {
       user: mapApiUserToModel(user),
-      token,
+      accessToken,
     };
   },
 
@@ -138,12 +118,19 @@ export const AuthService = {
     }
 
     try {
-      const response = await apiClient.get<{ success: boolean; data: UserProfileResponseData }>(
+      const response = await apiClient.get<{ success: boolean; data: AuthMeApiDTO }>(
         '/auth/me'
       );
-      return mapApiUserToModel(response.data.data.user);
-    } catch {
-      await clearPersistedToken();
+      return mapApiUserToModel(response.data.data);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      // Differentiate genuine 401/403 auth failure from temporary connectivity/server failures
+      if (status === 401 || status === 403) {
+        await clearPersistedToken();
+        return null;
+      }
+      // On temporary network errors, timeouts, or 5xx: DO NOT clear token from SecureStore!
+      console.warn('[AuthService] Temporary error connecting to /auth/me, preserving token:', err?.message || err);
       return null;
     }
   },
@@ -152,4 +139,3 @@ export const AuthService = {
     await clearPersistedToken();
   },
 };
-

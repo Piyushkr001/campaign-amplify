@@ -267,47 +267,99 @@ req.user = { id, email, role }
 - **`REVIEWER`**: Inherits all USER capabilities, plus access to the Reviewer Queue (`/api/v1/review/*`), starting editorial reviews, requesting revisions, approving/rejecting campaigns, and launching live funding.
 - **`ADMIN`**: Full platform authority including all reviewer operations and administrative oversight.
 
-### 2. Password Security & Cryptography
-- Passwords are securely hashed with `bcryptjs` (salt rounds: 10). Plaintext passwords are never stored, logged, or serialized.
-- Token signing uses server-only environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`). Secrets are never bundled into the Expo mobile bundle.
-- Mobile client persists JWTs exclusively in hardware-backed `expo-secure-store` (never in `AsyncStorage`).
+### 2. Exact Auth API Response Shapes & Contract
+- **POST `/api/v1/auth/register` and `/api/v1/auth/login`**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "user": {
+        "id": "uuid",
+        "email": "user@example.com",
+        "displayName": "User Name",
+        "role": "USER",
+        "createdAt": "2026-10-20T10:00:00.000Z"
+      },
+      "accessToken": "eyJhbGciOiJIUzI1NiIsIn..."
+    }
+  }
+  ```
+- **GET `/api/v1/auth/me`**:
+  Returns the user profile directly in `data` (no nested `.user`):
+  ```json
+  {
+    "success": true,
+    "data": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "displayName": "User Name",
+      "role": "USER",
+      "createdAt": "2026-10-20T10:00:00.000Z"
+    }
+  }
+  ```
 
-### 3. Seed Demo Accounts
-Run `bun run db:seed` in `server/` to provision idempotent test accounts:
-| Role | Email | Password | Intended Use |
-| :--- | :--- | :--- | :--- |
-| **USER** | `creator@campaignamplify.org` | `Password123!` | Create & edit own campaigns, back funding campaigns |
-| **REVIEWER** | `reviewer@campaignamplify.org` | `Password123!` | Moderate queue, request revisions, approve, launch funding |
-| **ADMIN** | `admin@campaignamplify.org` | `AdminPassword123!` | Platform administration and editorial oversight |
+### 3. SecureStore & Resilient Hydration
+- **Token Key**: `campaign_amplify_access_token` in `expo-secure-store`.
+- **Hydration Resilience**: On startup, mobile reads the token from SecureStore and verifies it via `GET /api/v1/auth/me`.
+  - **Auth Failure (401 / 403)**: Token is deleted from SecureStore, and auth state resets to Guest.
+  - **Network / Offline / 5xx Failure**: The token is **preserved** in SecureStore; the session is not destroyed during transient network hiccups or server restarts.
+
+### 4. Logout & Account Switch Privacy Isolation
+- Calling `signOut()` performs an authoritative wipe of private data:
+  1. Deletes `campaign_amplify_access_token` from SecureStore.
+  2. Clears all TanStack Query cache via `queryClient.clear()`.
+  3. Resets `useCampaignDraftStore.resetDraft()` so active campaign drafts are not leaked across accounts.
+  4. Resets user session state and redirects to public browsing.
+  5. User B logging in cannot view User A's creator campaigns, contribution history, receipts, or drafts.
+
+### 5. Protected Endpoint Fallback Policy
+- **Public Endpoints**: `/campaigns`, `/campaigns/:id` retain demo/local fallback in local mode (`EXPO_PUBLIC_USE_API=false`).
+- **Protected Endpoints**: `/me/campaigns`, `/me/contributions`, `/me/contributions/:id`, `/me/contributions/:id/receipt`, `/review/*` **NEVER** fall back to local private data when encountering 401 or 403 errors, even if `EXPO_PUBLIC_STRICT_API=false`.
+- **Client Route Guards**: Protected screens (`/my-campaigns/*`, `/reviewer/*`, `/create-campaign/*`, `/contribution/receipt`) feature direct authorization guards displaying sign-in prompts when accessed without credentials.
+
+### 6. Production Security & JWT Secret Requirement
+- **Development**: Permissive dev fallback with clear logging.
+- **Production (`NODE_ENV=production`)**: Server startup immediately fails if `JWT_SECRET` is unset, uses the default development placeholder, or is shorter than 32 characters.
+- **Demo Credentials**: Login screen pre-filled quick buttons are strictly gated behind `__DEV__` or `EXPO_PUBLIC_APP_ENV === 'development'`.
+- **Demo Database Seed**: `server/src/db/seed.ts` is explicitly prohibited in `NODE_ENV === 'production'`.
 
 ---
 
-## 🛡️ Financial Integrity & Idempotency Architecture
+## 🛡️ Financial Integrity & Terminal Race Protection
 
-Contributions and payment processing are hardened against race conditions and concurrent double-charging:
+Contributions and payments are guaranteed to reach exactly **ONE** terminal financial outcome:
 
-### 1. Atomic Conditional Confirmation
-During payment simulation, contribution status is updated using atomic SQL:
+### 1. Conditional Atomic Terminal Transitions
+Both `CONFIRMED` and `CANCELLED` transitions use atomic SQL conditionals:
 ```sql
+-- Winning confirmation:
 UPDATE contributions
 SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
-WHERE id = :contributionId AND status = 'PENDING'
+WHERE id = :id AND status = 'PENDING'
+RETURNING *;
+
+-- Winning cancellation:
+UPDATE contributions
+SET status = 'CANCELLED', cancelled_at = NOW(), updated_at = NOW()
+WHERE id = :id AND status = 'PENDING'
 RETURNING *;
 ```
-If two simultaneous `SUCCESS` requests arrive for the same contribution:
-- Exactly **one** transaction matches `status = 'PENDING'` and receives the returned row.
-- That winning transaction increments `campaign.amountRaised` and `campaign.backerCount`.
-- The losing transaction receives **0 rows**, loads the current state, observes `status = 'CONFIRMED'`, and returns the existing confirmed result **idempotently** without incrementing campaign funds.
 
-### 2. Database-Level Unique Invariants
-- **One Success Per Contribution**: A PostgreSQL partial unique index prevents application logic regression:
+### 2. Concurrent SUCCESS vs. CANCELLED Race Safety
+If a `SUCCESS` payment simulation races against an explicit `CANCEL` request for the same pending contribution:
+- Exactly **one** conditional update wins the `WHERE status = 'PENDING'` check.
+- **If SUCCESS wins**: Contribution becomes `CONFIRMED`, `amountRaised` increments once, `backerCount` increments once, and the competing cancellation request is rejected with `409 ContributionStateConflictError`.
+- **If CANCELLED wins**: Contribution becomes `CANCELLED`, funding amounts remain completely untouched, and the competing `SUCCESS` payment is rejected with `409 ContributionStateConflictError`.
+- Under no circumstances can a contribution have both a funding increase and `CANCELLED` status.
+
+### 3. Database-Level Unique Invariants
+- **One Success Per Contribution**: Partial unique index:
   ```sql
   CREATE UNIQUE INDEX payments_one_success_idx ON payments(contribution_id) WHERE status = 'SUCCESS';
   ```
-- **Unique Provider Reference**: `payments.provider_reference` is strictly unique with automated collision retry.
-
-### 3. Contribution Cancellation
-- `POST /api/v1/me/contributions/:id/cancel` enables users to explicitly abandon pending checkouts. Transitions `PENDING` → `CANCELLED` without altering campaign funds.
+- **Unique Provider Reference**: `payments.provider_reference` is strictly unique with automated retry.
+- **Strict Ownership**: All contribution and payment endpoints verify exact JWT identity (`contribution.userId === req.user.id`). Unowned or null-user contributions are rejected with `403 ContributionAccessDeniedError`.
 
 ---
 
@@ -322,26 +374,33 @@ bun run test:auth
 ```
 Verifies 16 authentication invariants: registration, duplicate email rejection (409), invalid credentials (401), login token acquisition, `/auth/me` profile validation, malformed token rejection, USER access blocked from reviewer queue (403), REVIEWER access granted (200), non-owner edit rejection (403), owner edit authorized (200), payment ownership validation, and receipt ownership protection.
 
-### 2. Financial Integrity & Concurrent Idempotency Suite
+### 2. Financial Terminal State Race Suite (SUCCESS vs. CANCELLED)
+```bash
+cd server
+bun run test:terminal-race
+```
+Fires concurrent `SUCCESS` and `CANCELLED` outcomes against the identical pending contribution via `Promise.allSettled()`. Verifies that exactly one terminal outcome wins, no double-funding occurs, and competing calls receive 409 conflict.
+
+### 3. Financial Integrity & Concurrent Idempotency Suite
 ```bash
 cd server
 bun run test:idempotency
 ```
-Simultaneously fires two concurrent `SUCCESS` payment simulations on the same pending contribution near its funding goal. Asserts that `amountRaised` increments exactly once, `backerCount` increments once, exactly one `SUCCESS` payment row exists, and the `FUNDING_GOAL_REACHED` lifecycle transition triggers once.
+Simultaneously fires two concurrent `SUCCESS` payment simulations on the same pending contribution. Asserts that `amountRaised` increments exactly once, `backerCount` increments once, exactly one `SUCCESS` payment row exists, and `FUNDING_GOAL_REACHED` triggers once.
 
-### 3. Step Sync Hardening Suite
+### 4. Step Sync Hardening Suite
 ```bash
 cd server
 bun run test:sync
 ```
 
-### 4. Full Review & Lifecycle Suite
+### 5. Full Review & Lifecycle Suite
 ```bash
 cd server
 bun run test:lifecycle
 ```
 
-### 5. Contribution & Payment Lifecycle Suite
+### 6. Contribution & Payment Lifecycle Suite
 ```bash
 cd server
 bun run test:contribution
@@ -352,17 +411,18 @@ bun run test:contribution
 ## 📋 Available Commands (Bun Only)
 
 ```bash
-bun expo start                  # Start Metro bundler
-bunx tsc --noEmit               # Mobile TypeScript check
-cd server && bun run typecheck  # Server TypeScript check
-cd server && bun run test:auth  # Run auth & RBAC integration test
+bun expo start                        # Start Metro bundler
+bunx tsc --noEmit                     # Mobile TypeScript check (100% clean)
+cd server && bun run typecheck        # Server TypeScript check (100% clean)
+cd server && bun run test:auth        # Run auth & RBAC integration test
+cd server && bun run test:terminal-race # Run SUCCESS vs CANCELLED race test
 cd server && bun run test:idempotency # Run financial idempotency test
-cd server && bun run test:sync  # Run campaign step sync test
-cd server && bun run test:lifecycle # Run review lifecycle test
+cd server && bun run test:sync        # Run campaign step sync test
+cd server && bun run test:lifecycle   # Run review lifecycle test
 cd server && bun run test:contribution # Run contribution lifecycle test
-bun run db:migrate              # Run Drizzle migrations
-bun run db:studio               # Launch Drizzle Studio (https://local.drizzle.studio)
-bun run db:seed                 # Populate idempotent demo data
-bun run server                  # Start backend dev server
+bun run db:migrate                    # Run Drizzle migrations
+bun run db:studio                     # Launch Drizzle Studio
+bun run db:seed                       # Populate idempotent demo data (dev only)
+bun run server                        # Start backend dev server
 ```
 

@@ -9,12 +9,17 @@ export const DEMO_CAMP_2_ID = '00000000-0000-4000-8000-000000000002';
 export const DEMO_CAMP_3_ID = '00000000-0000-4000-8000-000000000003';
 
 async function seed() {
+  if (env.NODE_ENV === 'production') {
+    console.error('❌ Refusing to run demo seed script in production environment (NODE_ENV=production).');
+    process.exit(1);
+  }
+
   if (!env.DATABASE_URL) {
     console.error('DATABASE_URL is not set. Please provide a valid Neon PostgreSQL connection string in .env to run the seed.');
     process.exit(1);
   }
 
-  console.log('[Seed] Connecting to Neon PostgreSQL...');
+  console.log('[Seed] [DEVELOPMENT / DEMO ONLY] Connecting to Neon PostgreSQL...');
   const db = getDb();
 
   console.log('[Seed] Ensuring demo accounts (USER, REVIEWER, ADMIN) exist...');
