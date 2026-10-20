@@ -67,7 +67,7 @@ export interface CampaignDraft {
   durationDays: number;
 
   fundingGoal?: number;
-
+  draftStep?: number;
   lastSavedAt?: string;
 }
 
@@ -151,6 +151,7 @@ export interface Campaign {
   submittedAt?: string;
   backerCount: number;
   distributionChannels: string[];
+  draftStep?: number;
   useOfFunds: UseOfFundsBreakdown;
   supportingSources: SupportingSource[];
 

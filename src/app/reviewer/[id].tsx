@@ -402,13 +402,15 @@ export default function ReviewerDetailScreen() {
                 </Text>
               </View>
             </View>
-            <AppButton
-              title="Demo: End Funding Period"
-              onPress={handleEndFunding}
-              variant="outline"
-              size="md"
-              icon={<Ionicons name="time-outline" size={16} color={Palette.navy900} />}
-            />
+            {!Config.useApi && (
+              <AppButton
+                title="Demo: End Funding Period"
+                onPress={handleEndFunding}
+                variant="outline"
+                size="md"
+                icon={<Ionicons name="time-outline" size={16} color={Palette.navy900} />}
+              />
+            )}
           </View>
         )}
 
@@ -420,13 +422,15 @@ export default function ReviewerDetailScreen() {
                 Funding concluded! Ready to configure advertising targeting parameters.
               </Text>
             </View>
-            <AppButton
-              title="Demo: Advance to Distribution Prep"
-              onPress={handleAdvanceToDistribution}
-              variant="primary"
-              size="md"
-              icon={<Ionicons name="hardware-chip-outline" size={16} color={Palette.pureWhite} />}
-            />
+            {!Config.useApi && (
+              <AppButton
+                title="Demo: Advance to Distribution Prep"
+                onPress={handleAdvanceToDistribution}
+                variant="primary"
+                size="md"
+                icon={<Ionicons name="hardware-chip-outline" size={16} color={Palette.pureWhite} />}
+              />
+            )}
           </View>
         )}
 
@@ -438,13 +442,15 @@ export default function ReviewerDetailScreen() {
                 Distribution accounts staged. Deploy creative to live advertising networks.
               </Text>
             </View>
-            <AppButton
-              title="Demo: Launch Live Promotion"
-              onPress={handleLaunchPromotion}
-              variant="primary"
-              size="md"
-              icon={<Ionicons name="megaphone-outline" size={16} color={Palette.pureWhite} />}
-            />
+            {!Config.useApi && (
+              <AppButton
+                title="Demo: Launch Live Promotion"
+                onPress={handleLaunchPromotion}
+                variant="primary"
+                size="md"
+                icon={<Ionicons name="megaphone-outline" size={16} color={Palette.pureWhite} />}
+              />
+            )}
           </View>
         )}
 
@@ -465,17 +471,19 @@ export default function ReviewerDetailScreen() {
                 onPress={() => router.push(`/report/${campaign.id}`)}
                 variant="outline"
                 size="md"
-                style={styles.actionBtnHalf}
+                style={!Config.useApi ? styles.actionBtnHalf : { flex: 1 }}
                 icon={<Ionicons name="analytics-outline" size={16} color={Palette.navy900} />}
               />
-              <AppButton
-                title="Demo: Complete"
-                onPress={handleCompletePromotion}
-                variant="primary"
-                size="md"
-                style={styles.actionBtnHalf}
-                icon={<Ionicons name="checkmark-done" size={16} color={Palette.pureWhite} />}
-              />
+              {!Config.useApi && (
+                <AppButton
+                  title="Demo: Complete"
+                  onPress={handleCompletePromotion}
+                  variant="primary"
+                  size="md"
+                  style={styles.actionBtnHalf}
+                  icon={<Ionicons name="checkmark-done" size={16} color={Palette.pureWhite} />}
+                />
+              )}
             </View>
           </View>
         )}

@@ -10,9 +10,11 @@ export interface ContributionTier {
 export type ContributionStatus =
   | 'PENDING'
   | 'PROCESSING'
+  | 'CONFIRMED'
   | 'SUCCESS'
   | 'FAILED'
   | 'CANCELLED'
+  | 'REFUND_PENDING'
   | 'REFUNDED';
 
 export interface Contribution {

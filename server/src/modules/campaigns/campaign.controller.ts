@@ -11,6 +11,15 @@ import {
   SubmitCampaignInput,
 } from './campaign.schemas';
 import { apiSuccess } from '../../utils/response';
+import { resolveDemoCreatorId } from '../../utils/demo-identity';
+
+async function getActorUserId(req: Request): Promise<string> {
+  const headerId = req.headers['x-actor-user-id'];
+  if (typeof headerId === 'string' && headerId.trim().length > 0) {
+    return headerId.trim();
+  }
+  return resolveDemoCreatorId();
+}
 
 export const CampaignController = {
   list: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -35,8 +44,9 @@ export const CampaignController = {
 
   createDraft: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const input = req.body as CreateDraftInput;
-      const draft = await CampaignService.createDraft(input);
+      const draft = await CampaignService.createDraft(input, actorUserId);
       apiSuccess(res, draft, 201);
     } catch (err) {
       next(err);
@@ -45,15 +55,17 @@ export const CampaignController = {
 
   updateBasics: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const { id } = req.params as unknown as CampaignIdParam;
       const input = req.body as UpdateBasicsInput;
-      const updated = await CampaignService.updateBasics(id, input);
+      const updated = await CampaignService.updateBasics(id, input, actorUserId);
       apiSuccess(res, {
         id: updated.id,
         title: updated.title,
         category: updated.category,
         summary: updated.summary,
         coverImageUrl: updated.coverImageUrl,
+        draftStep: updated.draftStep,
         updatedAt: updated.updatedAt,
       });
     } catch (err) {
@@ -63,9 +75,10 @@ export const CampaignController = {
 
   updateStory: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const { id } = req.params as unknown as CampaignIdParam;
       const input = req.body as UpdateStoryInput;
-      await CampaignService.updateStory(id, input);
+      await CampaignService.updateStory(id, input, actorUserId);
       apiSuccess(res, { success: true, step: 'STORY' });
     } catch (err) {
       next(err);
@@ -74,9 +87,10 @@ export const CampaignController = {
 
   updateVisuals: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const { id } = req.params as unknown as CampaignIdParam;
       const input = req.body as UpdateVisualsInput;
-      await CampaignService.updateVisuals(id, input);
+      await CampaignService.updateVisuals(id, input, actorUserId);
       apiSuccess(res, { success: true, step: 'VISUALS' });
     } catch (err) {
       next(err);
@@ -85,9 +99,10 @@ export const CampaignController = {
 
   updateReach: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const { id } = req.params as unknown as CampaignIdParam;
       const input = req.body as UpdateReachInput;
-      await CampaignService.updateReach(id, input);
+      await CampaignService.updateReach(id, input, actorUserId);
       apiSuccess(res, { success: true, step: 'REACH' });
     } catch (err) {
       next(err);
@@ -96,9 +111,10 @@ export const CampaignController = {
 
   submit: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const actorUserId = await getActorUserId(req);
       const { id } = req.params as unknown as CampaignIdParam;
       const input = req.body as SubmitCampaignInput;
-      const result = await CampaignService.submitCampaign(id, input);
+      const result = await CampaignService.submitCampaign(id, input, actorUserId);
       apiSuccess(res, result);
     } catch (err) {
       next(err);

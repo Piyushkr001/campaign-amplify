@@ -22,13 +22,10 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useCampaign } from '@/hooks/useCampaigns';
 import { useContributionStore } from '@/store/contribution-store';
-import {
-  calculateFundingProgress,
-  formatCurrency,
-  formatReachRange,
-} from '@/utils/formatters';
+import { calculateFundingProgress, formatCurrency, formatReachRange } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 import { Config } from '@/constants/config';
+import { useContributionQuote } from '@/hooks/useContributions';
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250];
 
@@ -42,6 +39,29 @@ export default function ChooseContributionScreen() {
   const [customInput, setCustomInput] = useState<string>('50');
   const [isCustomMode, setIsCustomMode] = useState<boolean>(false);
   const [inputError, setInputError] = useState<string | null>(null);
+
+  // Authoritative server quote when in API mode
+  const { data: serverQuote } = useContributionQuote(
+    campaign?.id || campaignId || '',
+    selectedAmount,
+    Config.useApi && selectedAmount > 0
+  );
+
+  // Central fee and reach calculation: server quote preferred, local fallback otherwise
+  const funds = serverQuote
+    ? {
+        advertising: serverQuote.advertisingAllocation,
+        platformFee: serverQuote.platformFee,
+        paymentProcessing: serverQuote.processingFee,
+      }
+    : calculateUseOfFunds(selectedAmount);
+
+  const impressions = serverQuote
+    ? {
+        min: serverQuote.estimatedImpressionsMin,
+        max: serverQuote.estimatedImpressionsMax,
+      }
+    : estimateDirectReach(funds.advertising);
 
   if (isLoading) {
     return (
@@ -76,10 +96,6 @@ export default function ChooseContributionScreen() {
   }
 
   const { clampedPercentage } = calculateFundingProgress(campaign.raised, campaign.goal);
-
-  // Central fee and reach calculation
-  const funds = calculateUseOfFunds(selectedAmount);
-  const impressions = estimateDirectReach(funds.advertising);
 
   const handleSelectPreset = (amount: number) => {
     setIsCustomMode(false);

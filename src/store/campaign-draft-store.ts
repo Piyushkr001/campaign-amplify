@@ -232,7 +232,7 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
        * Centralized action to populate the active draft with an existing campaign's data for revision.
        * Sets `draft.id = campaign.id`, `draft.mode = 'REVISION'`, and `draft.syncStatus = 'SYNCED'`.
        */
-      loadCampaignIntoDraft: (campaign: Campaign, step: 1 | 2 | 3 | 4 | 5 = 2) => {
+      loadCampaignIntoDraft: (campaign: Campaign, step?: 1 | 2 | 3 | 4 | 5) => {
         const now = new Date().toISOString();
         const sources: CampaignSource[] = (campaign.supportingSources || []).map((s, idx) => ({
           id: `src-${idx}-${generateId('item')}`,
@@ -241,14 +241,17 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
           publisher: s.publisher,
         }));
 
+        const mode: 'NEW' | 'REVISION' = campaign.status === 'CHANGES_REQUESTED' ? 'REVISION' : 'NEW';
+        const resolvedStep = (step ?? campaign.draftStep ?? (mode === 'REVISION' ? 2 : 1)) as 1 | 2 | 3 | 4 | 5;
+
         set({
           draft: {
             id: campaign.id,
-            mode: 'REVISION',
+            mode,
             syncStatus: 'SYNCED',
             lastSyncError: undefined,
             lastSyncedAt: now,
-            currentStep: step,
+            currentStep: resolvedStep,
             title: campaign.title,
             category: campaign.category,
             creatorName: campaign.creator,

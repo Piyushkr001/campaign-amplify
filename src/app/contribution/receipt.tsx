@@ -20,6 +20,8 @@ import { formatCurrency, formatReachRange } from '@/utils/formatters';
 
 import { Config } from '@/constants/config';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useContributionReceipt } from '@/hooks/useContributions';
+import { ActivityIndicator } from 'react-native';
 
 export default function ContributionReceiptScreen() {
   const router = useRouter();
@@ -30,17 +32,32 @@ export default function ContributionReceiptScreen() {
 
   const { getContributionById, getPaymentById } = useContributionStore();
 
-  const contribution = contributionId ? getContributionById(contributionId) : undefined;
-  const payment = paymentId ? getPaymentById(paymentId) : undefined;
+  const { data: apiReceipt, isLoading: isApiLoading } = useContributionReceipt(contributionId || '');
+  const localContribution = contributionId ? getContributionById(contributionId) : undefined;
+  const localPayment = paymentId ? getPaymentById(paymentId) : undefined;
 
-  // Strict validation: Require valid successful transaction
-  const isTransactionValid =
-    contribution &&
-    contribution.status === 'SUCCESS' &&
-    (!payment || payment.status === 'SUCCESS');
+  // Strict validation: In API mode verify backend receipt, in local mode verify store
+  const isTransactionValid = Config.useApi
+    ? !!apiReceipt
+    : localContribution &&
+      (localContribution.status === 'SUCCESS' || localContribution.status === 'CONFIRMED') &&
+      (!localPayment || localPayment.status === 'SUCCESS');
 
-  const campaignId = contribution?.campaignId || payment?.campaignId || '';
+  const campaignId = apiReceipt?.campaign.id || localContribution?.campaignId || localPayment?.campaignId || '';
   const { data: campaign } = useCampaign(campaignId);
+
+  if (Config.useApi && isApiLoading) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 100 }}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={{ ...Typography.bodySmall, color: Palette.neutral500, marginTop: Spacing.sm }}>
+            Retrieving official sponsorship receipt...
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   if (!isTransactionValid) {
     return (
@@ -77,12 +94,19 @@ export default function ContributionReceiptScreen() {
     );
   }
 
-  const amount = contribution.amount;
-  const adBudget = contribution.advertisingAllocation;
-  const platformFee = contribution.platformFee;
-  const processingFee = contribution.processingFee;
-  const reference = payment?.reference || contribution.paymentReference || 'N/A';
-  const timestamp = contribution.completedAt || contribution.createdAt;
+  const amount = apiReceipt ? apiReceipt.amount : localContribution?.amount || 0;
+  const adBudget = apiReceipt ? apiReceipt.allocation.advertising : localContribution?.advertisingAllocation || 0;
+  const platformFee = apiReceipt ? apiReceipt.allocation.platformFee : localContribution?.platformFee || 0;
+  const processingFee = apiReceipt ? apiReceipt.allocation.paymentProcessing : localContribution?.processingFee || 0;
+  const reference =
+    apiReceipt?.receiptReference ||
+    apiReceipt?.payment.reference ||
+    localPayment?.reference ||
+    localContribution?.paymentReference ||
+    'DEMO-RECEIPT';
+  const timestamp = apiReceipt
+    ? apiReceipt.confirmedAt || apiReceipt.createdAt
+    : localContribution?.completedAt || localContribution?.createdAt || new Date().toISOString();
   const dateFormatted = new Date(timestamp).toLocaleDateString([], {
     year: 'numeric',
     month: 'short',
@@ -91,13 +115,16 @@ export default function ContributionReceiptScreen() {
     minute: '2-digit',
   });
 
-  const minImp = contribution.estimatedImpressionsMin;
-  const maxImp = contribution.estimatedImpressionsMax;
+  const minImp = apiReceipt ? apiReceipt.allocation.estimatedImpressionsMin : localContribution?.estimatedImpressionsMin || 0;
+  const maxImp = apiReceipt ? apiReceipt.allocation.estimatedImpressionsMax : localContribution?.estimatedImpressionsMax || 0;
+  const displayTitle = apiReceipt?.campaign.title || campaign?.title || localContribution?.campaignTitle || 'Campaign Message';
+  const displayCreator = apiReceipt?.campaign.creator || campaign?.creator || 'Community Campaigner';
+  const disclaimerText = apiReceipt?.disclaimer || 'Demo Payment — No real money was charged. Contributions support campaign amplification and distribution. This is not a direct charitable donation to the organization or cause.';
 
   const handleShareReceipt = async () => {
     try {
       await Share.share({
-        message: `Contribution Receipt (Demo) for "${campaign?.title || 'Campaign Amplification'}": Total ${formatCurrency(amount)} sponsored. Reference: ${reference}`,
+        message: `Contribution Receipt (Demo) for "${displayTitle}": Total ${formatCurrency(amount)} sponsored. Reference: ${reference}`,
       });
     } catch {
       // Ignore dismiss
@@ -173,10 +200,10 @@ export default function ContributionReceiptScreen() {
         <View style={styles.campaignSection}>
           <Text style={styles.metaLabel}>Funded Campaign</Text>
           <Text style={styles.campaignTitleText}>
-            {campaign?.title || contribution.campaignTitle || 'Campaign Message'}
+            {displayTitle}
           </Text>
           <Text style={styles.creatorText}>
-            Creator: {campaign?.creator || 'Community Campaigner'}
+            Creator: {displayCreator}
           </Text>
         </View>
 
@@ -228,8 +255,7 @@ export default function ContributionReceiptScreen() {
         <View style={styles.disclaimerBox}>
           <Text style={styles.disclaimerHeading}>IMPORTANT NOTICE</Text>
           <Text style={styles.disclaimerBody}>
-            Demo Payment — No real money was charged. Contributions support campaign amplification and distribution.
-            This is not a direct charitable donation to the organization or cause.
+            {disclaimerText}
           </Text>
         </View>
       </View>

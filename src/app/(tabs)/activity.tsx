@@ -16,6 +16,8 @@ import { useContributionStore } from '@/store/contribution-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { formatCurrency, formatReachRange } from '@/utils/formatters';
 import { CampaignStatus } from '@/types/campaign';
+import { Config } from '@/constants/config';
+import { useMyContributions } from '@/hooks/useContributions';
 
 type ActivityTab = 'all' | 'backed' | 'updates';
 
@@ -35,8 +37,28 @@ export default function ActivityScreen() {
   const [activeTab, setActiveTab] = useState<ActivityTab>('all');
   const { contributions } = useContributionStore();
   const { campaigns } = useMyCampaignsStore();
+  const { data: apiContributions } = useMyContributions();
 
-  const successfulContributions = contributions.filter((c) => c.status === 'SUCCESS');
+  const userContributions = Config.useApi && apiContributions
+    ? apiContributions.map((ac) => {
+        const adBudget = Math.round(ac.amount * 0.85);
+        return {
+          id: ac.id,
+          campaignId: ac.campaignId,
+          campaignTitle: ac.campaignTitle,
+          amount: ac.amount,
+          status: ac.status,
+          createdAt: ac.createdAt,
+          advertisingAllocation: adBudget,
+          estimatedImpressionsMin: adBudget * 20,
+          estimatedImpressionsMax: adBudget * 30,
+        };
+      })
+    : contributions;
+
+  const successfulContributions = userContributions.filter(
+    (c) => c.status === 'SUCCESS' || c.status === 'CONFIRMED'
+  );
 
   // Derive lifecycle events from creator campaign status history
   const lifecycleEvents: LifecycleEvent[] = [];

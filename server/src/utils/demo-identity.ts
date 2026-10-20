@@ -4,9 +4,11 @@ import { env } from '../config/env';
 
 export const DEMO_CREATOR_EMAIL = 'creator@campaignamplify.org';
 export const DEMO_REVIEWER_EMAIL = 'reviewer@campaignamplify.org';
+export const DEMO_BACKER_EMAIL = 'backer@campaignamplify.org';
 
 let cachedCreatorId: string | null = null;
 let cachedReviewerId: string | null = null;
+let cachedBackerId: string | null = null;
 
 /**
  * Resolves or lazily provisions the demo creator user in Neon.
@@ -77,3 +79,39 @@ export async function resolveDemoReviewerId(): Promise<string> {
   cachedReviewerId = newUser.id;
   return cachedReviewerId;
 }
+
+/**
+ * Resolves or lazily provisions the demo backer user in Neon.
+ * Ready to be replaced by JWT request context in future phases.
+ */
+export async function resolveDemoBackerId(): Promise<string> {
+  if (cachedBackerId) return cachedBackerId;
+  if (!env.DATABASE_URL) {
+    return '00000000-0000-0000-0000-000000000003';
+  }
+
+  const db = getDb();
+  const existing = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.email, DEMO_BACKER_EMAIL))
+    .limit(1);
+
+  if (existing.length > 0) {
+    cachedBackerId = existing[0].id;
+    return cachedBackerId;
+  }
+
+  const [newUser] = await db
+    .insert(schema.users)
+    .values({
+      email: DEMO_BACKER_EMAIL,
+      displayName: 'Community Backer',
+      role: 'USER',
+    })
+    .returning({ id: schema.users.id });
+
+  cachedBackerId = newUser.id;
+  return cachedBackerId;
+}
+

@@ -40,6 +40,7 @@ export const campaigns = pgTable(
     category: varchar('category', { length: 50 }),
     summary: text('summary'),
     status: campaignStatusEnum('status').default('DRAFT').notNull(),
+    draftStep: integer('draft_step').default(1).notNull(),
     fundingGoal: integer('funding_goal'), // nullable in DRAFT state; validated before submission
     amountRaised: integer('amount_raised').default(0).notNull(),
     backerCount: integer('backer_count').default(0).notNull(),

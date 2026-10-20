@@ -23,6 +23,7 @@ import {
   DatabaseUnavailableError,
   IncompleteCampaignError,
   InvalidCampaignStatusError,
+  ForbiddenError,
 } from '../../utils/errors';
 import { canEditCampaign, canSubmitCampaign } from './campaign.lifecycle';
 import { transitionCampaign } from './campaign.transition';
@@ -515,6 +516,7 @@ export const CampaignRepository = {
         category: found.category,
         summary: found.summary,
         status: found.status,
+        draftStep: (found as any).draftStep || 1,
         fundingGoal: found.fundingGoal,
         amountRaised: found.raised,
         backerCount: found.backerCount,
@@ -614,7 +616,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 1: Basics.
    */
-  updateBasics: async (id: string, input: UpdateBasicsInput, _actorUserId?: string) => {
+  updateBasics: async (id: string, input: UpdateBasicsInput, actorUserId?: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -624,9 +626,14 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
+      if (actorUserId && existing.creatorId && existing.creatorId !== actorUserId) {
+        throw new ForbiddenError('You do not have permission to modify this campaign.');
+      }
       if (!canEditCampaign(existing.status as any)) {
         throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
+
+      const nextDraftStep = Math.max((existing as any).draftStep || 1, 2);
 
       const [updated] = await db
         .update(schema.campaigns)
@@ -637,6 +644,7 @@ export const CampaignRepository = {
           summary: input.summary,
           coverImageUrl:
             input.coverImage !== undefined ? input.coverImage : existing.coverImageUrl,
+          draftStep: nextDraftStep,
           updatedAt: new Date(),
         })
         .where(eq(schema.campaigns.id, id as any))
@@ -653,7 +661,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 2: Story and sources atomically in a database transaction.
    */
-  updateStory: async (id: string, input: UpdateStoryInput, _actorUserId?: string) => {
+  updateStory: async (id: string, input: UpdateStoryInput, actorUserId?: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -663,9 +671,14 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
+      if (actorUserId && existing.creatorId && existing.creatorId !== actorUserId) {
+        throw new ForbiddenError('You do not have permission to modify this campaign.');
+      }
       if (!canEditCampaign(existing.status as any)) {
         throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
+
+      const nextDraftStep = Math.max((existing as any).draftStep || 1, 3);
 
       await db.transaction(async (tx) => {
         // Update story narrative fields
@@ -679,6 +692,7 @@ export const CampaignRepository = {
             storyImageCaption: input.storyImageCaption || null,
             storyImageCredit: input.storyImageCredit || null,
             suggestedAction: input.suggestedAction || null,
+            draftStep: nextDraftStep,
             updatedAt: new Date(),
           })
           .where(eq(schema.campaigns.id, id as any));
@@ -710,7 +724,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 3: Visuals & Ad Creative.
    */
-  updateVisuals: async (id: string, input: UpdateVisualsInput, _actorUserId?: string) => {
+  updateVisuals: async (id: string, input: UpdateVisualsInput, actorUserId?: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -720,17 +734,28 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
+      if (actorUserId && existing.creatorId && existing.creatorId !== actorUserId) {
+        throw new ForbiddenError('You do not have permission to modify this campaign.');
+      }
       if (!canEditCampaign(existing.status as any)) {
         throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
+      const nextDraftStep = Math.max((existing as any).draftStep || 1, 4);
+
       await db.transaction(async (tx) => {
+        const updateFields: Record<string, any> = {
+          draftStep: nextDraftStep,
+          updatedAt: new Date(),
+        };
         if (input.coverImage !== undefined) {
-          await tx
-            .update(schema.campaigns)
-            .set({ coverImageUrl: input.coverImage, updatedAt: new Date() })
-            .where(eq(schema.campaigns.id, id as any));
+          updateFields.coverImageUrl = input.coverImage;
         }
+
+        await tx
+          .update(schema.campaigns)
+          .set(updateFields)
+          .where(eq(schema.campaigns.id, id as any));
 
         // Upsert ad creative
         await tx
@@ -765,7 +790,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 4: Reach & Distribution Preferences.
    */
-  updateReach: async (id: string, input: UpdateReachInput, _actorUserId?: string) => {
+  updateReach: async (id: string, input: UpdateReachInput, actorUserId?: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -775,16 +800,22 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
+      if (actorUserId && existing.creatorId && existing.creatorId !== actorUserId) {
+        throw new ForbiddenError('You do not have permission to modify this campaign.');
+      }
       if (!canEditCampaign(existing.status as any)) {
         throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
+      const nextDraftStep = Math.max((existing as any).draftStep || 1, 5);
+
       await db.transaction(async (tx) => {
-        // Authoritative duration on campaigns table
+        // Authoritative duration and draftStep on campaigns table
         await tx
           .update(schema.campaigns)
           .set({
             durationDays: input.durationDays,
+            draftStep: nextDraftStep,
             updatedAt: new Date(),
           })
           .where(eq(schema.campaigns.id, id as any));
@@ -831,6 +862,9 @@ export const CampaignRepository = {
       const existing = await CampaignRepository.findRawById(id);
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
+      }
+      if (actorUserId && existing.creatorId && existing.creatorId !== actorUserId) {
+        throw new ForbiddenError('You do not have permission to submit this campaign.');
       }
       if (!canSubmitCampaign(existing.status as any)) {
         throw new InvalidCampaignStatusError(existing.status, 'submit');

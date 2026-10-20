@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +25,8 @@ import {
 } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 import { Config } from '@/constants/config';
+import { useContributionQuote } from '@/hooks/useContributions';
+import { ContributionService } from '@/services/contribution.service';
 
 export default function ContributionReviewScreen() {
   const router = useRouter();
@@ -34,13 +37,31 @@ export default function ContributionReviewScreen() {
 
   const { data: campaign } = useCampaign(campaignId || '');
   const { currentContribution } = useContributionStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const contributionAmount = amount ? parseInt(amount, 10) : currentContribution?.amount || 50;
 
-  // Total Payment = Contribution Amount
-  // Internally split into: Advertising (85%), Platform (10%), Processing (5%)
-  const funds = calculateUseOfFunds(contributionAmount);
-  const reach = estimateDirectReach(funds.advertising);
+  // Authoritative server quote in API mode; local fallback calculation otherwise
+  const { data: serverQuote } = useContributionQuote(
+    campaign?.id || campaignId || '',
+    contributionAmount,
+    Config.useApi && contributionAmount > 0
+  );
+
+  const funds = serverQuote
+    ? {
+        advertising: serverQuote.advertisingAllocation,
+        platformFee: serverQuote.platformFee,
+        paymentProcessing: serverQuote.processingFee,
+      }
+    : calculateUseOfFunds(contributionAmount);
+
+  const reach = serverQuote
+    ? {
+        min: serverQuote.estimatedImpressionsMin,
+        max: serverQuote.estimatedImpressionsMax,
+      }
+    : estimateDirectReach(funds.advertising);
 
   const goal = campaign?.goal || 2500;
   const currentRaised = campaign?.raised || 0;
@@ -48,15 +69,39 @@ export default function ContributionReviewScreen() {
   const { clampedPercentage: currentPercent } = calculateFundingProgress(currentRaised, goal);
   const { clampedPercentage: newPercent } = calculateFundingProgress(newRaised, goal);
 
-  const handleContinueToPayment = () => {
+  const handleContinueToPayment = async () => {
+    if (isSubmitting) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    router.push({
-      pathname: '/contribution/payment',
-      params: {
-        campaignId: campaignId || '',
-        amount: contributionAmount.toString(),
-      },
-    });
+
+    try {
+      setIsSubmitting(true);
+      let contributionIdParam = currentContribution?.id;
+
+      if (Config.useApi) {
+        // Requirement #39: Create real pending contribution on server
+        const created = await ContributionService.createContribution(
+          campaign?.id || campaignId || '',
+          contributionAmount
+        );
+        contributionIdParam = created.id;
+      }
+
+      router.push({
+        pathname: '/contribution/payment',
+        params: {
+          campaignId: campaignId || '',
+          amount: contributionAmount.toString(),
+          contributionId: contributionIdParam,
+        },
+      });
+    } catch (err: any) {
+      Alert.alert(
+        'Unable to Initialize Contribution',
+        err?.response?.data?.message || err?.message || 'Failed to initialize contribution.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -204,6 +249,8 @@ export default function ContributionReviewScreen() {
           variant="primary"
           size="lg"
           fullWidth
+          loading={isSubmitting}
+          disabled={isSubmitting}
           icon={<Ionicons name="card-outline" size={18} color={Palette.pureWhite} />}
         />
 

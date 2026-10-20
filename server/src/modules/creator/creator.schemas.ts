@@ -1,7 +1,32 @@
 import { z } from 'zod';
+import { BackendCampaignStatus } from '../campaigns/campaign.types';
+
+const VALID_STATUSES: BackendCampaignStatus[] = [
+  'DRAFT',
+  'SUBMITTED_FOR_REVIEW',
+  'UNDER_REVIEW',
+  'CHANGES_REQUESTED',
+  'APPROVED',
+  'FUNDING',
+  'FUNDING_GOAL_REACHED',
+  'FUNDING_ENDED',
+  'DISTRIBUTION_PREPARATION',
+  'PROMOTING',
+  'COMPLETED',
+  'REJECTED',
+  'CANCELLED',
+  'REFUND_PENDING',
+  'FAILED',
+];
 
 export const creatorCampaignsQuerySchema = z.object({
-  status: z.string().optional(),
+  status: z
+    .string()
+    .trim()
+    .refine((val) => val === 'ALL' || (VALID_STATUSES as string[]).includes(val), {
+      message: 'Status must be a valid campaign status or ALL.',
+    })
+    .optional(),
   category: z.string().optional(),
   search: z.string().optional(),
 });

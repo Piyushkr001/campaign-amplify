@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index';
 import { env } from '../../config/env';
 import { BackendCampaignStatus } from './campaign.types';
@@ -7,6 +7,7 @@ import {
   NotFoundError,
   InvalidCampaignStatusError,
   DatabaseUnavailableError,
+  LifecycleConflictError,
 } from '../../utils/errors';
 
 export interface TransitionCampaignOptions {
@@ -18,6 +19,7 @@ export interface TransitionCampaignOptions {
   reviewDecision?: 'APPROVED' | 'CHANGES_REQUESTED' | 'REJECTED' | string | null;
   reviewFeedback?: string | null;
   fundingGoal?: number | null;
+  draftStep?: number | null;
 }
 
 export async function transitionCampaign(options: TransitionCampaignOptions) {
@@ -50,6 +52,12 @@ export async function transitionCampaign(options: TransitionCampaignOptions) {
 
   if (options.fundingGoal !== undefined && options.fundingGoal !== null) {
     timestampSet.fundingGoal = options.fundingGoal;
+  }
+
+  if (options.draftStep !== undefined && options.draftStep !== null) {
+    timestampSet.draftStep = options.draftStep;
+  } else if (options.nextStatus === 'SUBMITTED_FOR_REVIEW') {
+    timestampSet.draftStep = 5;
   }
 
   switch (options.nextStatus) {
@@ -98,8 +106,19 @@ export async function transitionCampaign(options: TransitionCampaignOptions) {
     const [updated] = await tx
       .update(schema.campaigns)
       .set(timestampSet)
-      .where(eq(schema.campaigns.id, options.campaignId as any))
+      .where(
+        and(
+          eq(schema.campaigns.id, options.campaignId as any),
+          eq(schema.campaigns.status, currentStatus as any)
+        )
+      )
       .returning();
+
+    if (!updated) {
+      throw new LifecycleConflictError(
+        `Campaign "${options.campaignId}" status was modified concurrently (expected: ${currentStatus}).`
+      );
+    }
 
     // Insert authoritative status history event
     await tx.insert(schema.campaignStatusHistory).values({

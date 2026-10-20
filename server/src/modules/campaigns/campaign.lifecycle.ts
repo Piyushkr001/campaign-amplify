@@ -14,7 +14,7 @@ export const ALLOWED_TRANSITIONS: Record<BackendCampaignStatus, BackendCampaignS
   COMPLETED: [],
   REJECTED: [],
   CANCELLED: [],
-  REFUND_PENDING: [],
+  REFUND_PENDING: ['CANCELLED'],
   FAILED: [],
 };
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,15 +25,18 @@ import { useCampaignFundingStore } from '@/store/campaign-funding-store';
 import { useCampaignRuntimeStore } from '@/store/campaign-runtime-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { queryClient } from '@/services/query-client';
-import { campaignKeys } from '@/constants/query-keys';
+import { campaignKeys, contributionKeys } from '@/constants/query-keys';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
+import { Config } from '@/constants/config';
+import { ContributionService } from '@/services/contribution.service';
 
 export default function SimulatedPaymentScreen() {
   const router = useRouter();
-  const { campaignId, amount } = useLocalSearchParams<{
+  const { campaignId, amount, contributionId } = useLocalSearchParams<{
     campaignId: string;
     amount?: string;
+    contributionId?: string;
   }>();
 
   const { data: campaign } = useCampaign(campaignId || '');
@@ -129,7 +133,7 @@ export default function SimulatedPaymentScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleProcessPayment = () => {
+  const handleProcessPayment = async () => {
     if (!validatePaymentForm()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
@@ -138,7 +142,70 @@ export default function SimulatedPaymentScreen() {
     setIsProcessing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
-    // Ensure we have a contribution record
+    const cardLast4 = cardNumber.replace(/\s/g, '').slice(-4) || '4242';
+
+    if (Config.useApi) {
+      try {
+        let activeContribId = contributionId || currentContribution?.id;
+        if (!activeContribId) {
+          const newContrib = await ContributionService.createContribution(
+            campaignId || '',
+            contributionAmount
+          );
+          activeContribId = newContrib.id;
+        }
+
+        const simResult = await ContributionService.simulatePayment({
+          contributionId: activeContribId,
+          outcome: simulateOutcome,
+          cardLast4,
+        });
+
+        // Invalidate TanStack query cache so detail, list, and profile screens refresh from PostgreSQL
+        queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+        queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+        if (campaignId) {
+          queryClient.invalidateQueries({ queryKey: campaignKeys.public.detail(campaignId) });
+          queryClient.invalidateQueries({ queryKey: campaignKeys.creator.detail(campaignId) });
+        }
+        queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+        queryClient.invalidateQueries({ queryKey: contributionKeys.all });
+        queryClient.invalidateQueries({ queryKey: contributionKeys.me() });
+        queryClient.invalidateQueries({ queryKey: contributionKeys.detail(activeContribId) });
+        queryClient.invalidateQueries({ queryKey: contributionKeys.receipt(activeContribId) });
+
+        if (simulateOutcome === 'SUCCESS') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          router.replace({
+            pathname: '/contribution/success',
+            params: {
+              paymentId: simResult.paymentId,
+              contributionId: activeContribId,
+            },
+          });
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+          router.replace({
+            pathname: '/contribution/failed',
+            params: {
+              paymentId: simResult.paymentId,
+              contributionId: activeContribId,
+              campaignId: campaignId || '',
+            },
+          });
+        }
+      } catch (err: any) {
+        Alert.alert(
+          'Payment Simulation Failed',
+          err?.response?.data?.message || err?.message || 'Transaction could not be processed.'
+        );
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
+    // Local mode fallback
     const funds = calculateUseOfFunds(contributionAmount);
     const reach = estimateDirectReach(funds.advertising);
 
@@ -157,7 +224,6 @@ export default function SimulatedPaymentScreen() {
     }
 
     // 1. Create payment record (PENDING) with masked safe metadata only (never save card number or CVV)
-    const cardLast4 = cardNumber.replace(/\s/g, '').slice(-4) || '4242';
     const payment = createPayment(
       activeContribution.id,
       campaignId || '',

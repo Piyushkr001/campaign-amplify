@@ -5,6 +5,8 @@ import { env } from './config/env';
 import { campaignRouter } from './modules/campaigns/campaign.routes';
 import { creatorRouter } from './modules/creator/creator.routes';
 import { reviewRouter } from './modules/reviews/review.routes';
+import { myContributionsRouter } from './modules/contributions/contribution.routes';
+import { paymentsRouter } from './modules/payments/payment.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { apiSuccess } from './utils/response';
@@ -18,7 +20,7 @@ export function createApp(): Express {
     cors({
       origin: '*', // Allow local Expo dev client & emulators
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-actor-user-id', 'x-actor-role'],
     })
   );
   app.use(express.json());
@@ -69,6 +71,8 @@ export function createApp(): Express {
   app.use('/api/v1/campaigns', campaignRouter);
   app.use('/api/v1/me/campaigns', creatorRouter);
   app.use('/api/v1/review/campaigns', reviewRouter);
+  app.use('/api/v1/me/contributions', myContributionsRouter);
+  app.use('/api/v1/payments', paymentsRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

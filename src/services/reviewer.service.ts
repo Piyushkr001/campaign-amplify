@@ -1,11 +1,62 @@
 import { apiClient } from './api';
 import { Config } from '@/constants/config';
 import { Campaign } from '@/types/campaign';
-import { CampaignListApiDTO, CampaignDetailApiDTO } from '@/types/campaign-api';
+import {
+  CampaignListApiDTO,
+  CampaignDetailApiDTO,
+  ReviewerCampaignListApiDTO,
+  ReviewerCampaignDetailApiDTO,
+} from '@/types/campaign-api';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { getEffectiveCampaign } from '@/utils/effective-campaign';
 import { queryClient } from './query-client';
 import { campaignKeys, reviewKeys } from '@/constants/query-keys';
+
+function mapReviewerQueueDtoToCampaign(dto: ReviewerCampaignListApiDTO): Campaign {
+  const estimatedReachMin = dto.estimatedReachMin ?? Math.round((dto.fundingGoal || 0) * 0.85 * 20);
+  const estimatedReachMax = dto.estimatedReachMax ?? Math.round((dto.fundingGoal || 0) * 0.85 * 30);
+  
+  // Real count of sources from backend DTO
+  const sources = Array.from({ length: dto.sourcesCount || 0 }, (_, i) => ({
+    title: `Supporting Source ${i + 1}`,
+    url: '',
+    publisher: 'Verified Source',
+  }));
+
+  return {
+    id: dto.id,
+    title: dto.title,
+    category: dto.category as any,
+    creator: dto.creatorName || dto.creator || 'Community Campaigner',
+    creatorType: (dto.creatorType as any) || 'Community Campaigner',
+    creatorAvatar: dto.creatorAvatar,
+    summary: dto.summary,
+    story: '',
+    durationDays: 14,
+    coverImage: dto.coverImage || dto.coverImageUrl || '',
+    raised: 0,
+    goal: dto.fundingGoal ?? 0,
+    estimatedReachMin,
+    estimatedReachMax,
+    status: dto.status,
+    featured: false,
+    createdAt: dto.createdAt || dto.updatedAt,
+    submittedAt: dto.submittedAt,
+    reviewStartedAt: dto.reviewStartedAt,
+    requestedChangesAt: dto.requestedChangesAt,
+    approvedAt: dto.approvedAt,
+    distributionChannels: [],
+    daysRemaining: 14,
+    backerCount: 0,
+    useOfFunds: {
+      advertising: Config.feeStructure.advertisingPercentage,
+      platformFee: Config.feeStructure.platformFeePercentage,
+      paymentProcessing: Config.feeStructure.paymentProcessingPercentage,
+    },
+    supportingSources: sources,
+    reviewFeedback: dto.latestReviewFeedback || dto.lastReviewFeedback,
+  };
+}
 
 function mapApiDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Campaign {
   const detail = dto as CampaignDetailApiDTO;
@@ -59,6 +110,7 @@ function mapApiDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Ca
     failedAt: detail.failedAt,
     backerCount: dto.backerCount,
     distributionChannels: dto.distributionChannels || [],
+    draftStep: (dto as any).draftStep ?? (detail as any).draftStep ?? 1,
     useOfFunds: detail.useOfFunds || {
       advertising: Config.feeStructure.advertisingPercentage,
       platformFee: Config.feeStructure.platformFeePercentage,
@@ -69,9 +121,16 @@ function mapApiDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Ca
       url: s.url,
       publisher: s.publisher,
     })),
-    reviewFeedback: detail.reviewFeedback,
+    reviewFeedback: detail.reviewFeedback || (dto as any).latestReviewFeedback,
     rejectionReason: detail.rejectionReason,
-    statusHistory: detail.statusHistory as any,
+    statusHistory: (detail.statusHistory || []).map((h) => ({
+      id: h.id,
+      fromStatus: (h.fromStatus as any) || undefined,
+      toStatus: h.toStatus,
+      actor: h.actorType || h.actor || 'SYSTEM',
+      note: h.note || undefined,
+      createdAt: h.createdAt,
+    })),
   };
 }
 
@@ -83,12 +142,12 @@ export const ReviewerService = {
   }): Promise<Campaign[]> => {
     if (Config.useApi) {
       try {
-        const response = await apiClient.get<{ success: boolean; data: any[] }>(
+        const response = await apiClient.get<{ success: boolean; data: ReviewerCampaignListApiDTO[] }>(
           '/review/campaigns',
           { params: filters }
         );
         if (response.data?.success && Array.isArray(response.data?.data)) {
-          return response.data.data.map(mapApiDtoToCampaign);
+          return response.data.data.map(mapReviewerQueueDtoToCampaign);
         }
       } catch (err) {
         if (Config.strictApi) {
@@ -112,7 +171,7 @@ export const ReviewerService = {
   getReviewCampaign: async (id: string): Promise<Campaign | undefined> => {
     if (Config.useApi) {
       try {
-        const response = await apiClient.get<{ success: boolean; data: CampaignDetailApiDTO }>(
+        const response = await apiClient.get<{ success: boolean; data: ReviewerCampaignDetailApiDTO }>(
           `/review/campaigns/${id}`
         );
         if (response.data?.success && response.data?.data) {

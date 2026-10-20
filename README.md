@@ -270,6 +270,22 @@ Verifies complete end-to-end workflow:
 9. Reviewer reviews round 2 and approves -> `APPROVED`
 10. Reviewer publishes to funding -> `FUNDING`
 11. Campaign becomes live and backable on public Explore
-12. Database verifies exactly ONE row exists with full status audit history sequence and review records
-13. Automatic database cleanup in Neon
+### 3. Contribution & Payment Lifecycle Suite
+```bash
+cd server
+bun run test:contribution
+```
+Verifies complete transactional contribution and payment flow:
+1. Seed `FUNDING` campaign in Neon PostgreSQL
+2. Calculate quote math (`CAMPAIGN_POLICY`: 85% ad, 10% platform, 5% processing; 20–30 impressions/$)
+3. Create `PENDING` contribution
+4. Simulate `FAILED` payment — verifies campaign funding and backer count remain unchanged
+5. Simulate `SUCCESS` payment — confirms contribution, updates payment, increments `amountRaised` and `backerCount`
+6. Idempotency verification — duplicate success payment returns existing confirmed record without duplicate funding
+7. Near-goal crossing — contribution crosses goal and automatically transitions campaign `FUNDING` → `FUNDING_GOAL_REACHED` with `SYSTEM` status history
+8. Campaign backing guard — verifies `FUNDING_GOAL_REACHED` campaign rejects new contributions with `409 CAMPAIGN_NOT_BACKABLE`
+9. Backer contribution history (`GET /me/contributions`) and detail (`GET /me/contributions/:id`)
+10. Demo sponsorship receipt (`GET /me/contributions/:id/receipt`)
+11. Concurrency test — two simultaneous payments near goal apply without lost updates and transition fires exactly once
+12. Clean database teardown in Neon
 

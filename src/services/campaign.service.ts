@@ -81,10 +81,17 @@ function mapDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Campa
     completedAt: detail.completedAt,
     rejectedAt: detail.rejectedAt,
     cancelledAt: detail.cancelledAt,
-    failedAt: detail.failedAt,
-    reviewFeedback: detail.reviewFeedback,
+    draftStep: (dto as any).draftStep ?? (detail as any).draftStep ?? 1,
+    reviewFeedback: detail.reviewFeedback || (dto as any).latestReviewFeedback,
     rejectionReason: detail.rejectionReason,
-    statusHistory: detail.statusHistory as any,
+    statusHistory: (detail.statusHistory || []).map((h) => ({
+      id: h.id,
+      fromStatus: (h.fromStatus as any) || undefined,
+      toStatus: h.toStatus,
+      actor: h.actorType || h.actor || 'SYSTEM',
+      note: h.note || undefined,
+      createdAt: h.createdAt,
+    })),
   };
 }
 
@@ -156,14 +163,19 @@ export const CampaignService = {
           list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           break;
         case 'most_funded':
-          list.sort((a, b) => b.raised / b.goal - a.raised / a.goal);
+          list.sort((a, b) => b.raised - a.raised);
           break;
         case 'ending_soon':
-          list.sort((a, b) => a.daysRemaining - b.daysRemaining);
+          list.sort((a, b) => {
+            const aPriority = a.status === 'FUNDING' ? 0 : 1;
+            const bPriority = b.status === 'FUNDING' ? 0 : 1;
+            if (aPriority !== bPriority) return aPriority - bPriority;
+            return a.daysRemaining - b.daysRemaining;
+          });
           break;
         case 'featured':
         default:
-          list.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
+          list.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0) || b.raised - a.raised);
           break;
       }
     }

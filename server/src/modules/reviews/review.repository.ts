@@ -66,23 +66,36 @@ export const ReviewRepository = {
             .orderBy(desc(schema.campaignReviews.createdAt))
             .limit(1);
 
+          const goal = row.fundingGoal ?? 0;
+          const reachMin = Math.round(
+            goal * CAMPAIGN_POLICY.impressionsPerDollarMin * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+          );
+          const reachMax = Math.round(
+            goal * CAMPAIGN_POLICY.impressionsPerDollarMax * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+          );
+
           return {
             id: row.id,
             title: row.title || 'Untitled Campaign',
             category: row.category || 'General',
             creator: row.creatorDisplayName || 'Community Campaigner',
+            creatorName: row.creatorDisplayName || 'Community Campaigner',
             creatorType: 'Community Campaigner',
             summary: row.summary || '',
             status: row.status,
             coverImage: row.coverImageUrl || undefined,
-            fundingGoal: row.fundingGoal ?? 0,
+            fundingGoal: goal,
             submittedAt: row.submittedAt?.toISOString(),
             reviewStartedAt: row.reviewStartedAt?.toISOString(),
             requestedChangesAt: row.requestedChangesAt?.toISOString(),
             approvedAt: row.approvedAt?.toISOString(),
+            createdAt: row.createdAt.toISOString(),
             updatedAt: row.updatedAt.toISOString(),
             sourcesCount: sources.length,
             lastReviewFeedback: reviews[0]?.feedback || undefined,
+            latestReviewFeedback: reviews[0]?.feedback || undefined,
+            estimatedReachMin: reachMin,
+            estimatedReachMax: reachMax,
           };
         })
       );

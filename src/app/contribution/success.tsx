@@ -25,6 +25,8 @@ import {
 
 import { Config } from '@/constants/config';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useContributionDetail } from '@/hooks/useContributions';
+import { ActivityIndicator } from 'react-native';
 
 export default function ContributionSuccessScreen() {
   const router = useRouter();
@@ -35,17 +37,32 @@ export default function ContributionSuccessScreen() {
 
   const { getContributionById, getPaymentById } = useContributionStore();
 
-  const contribution = contributionId ? getContributionById(contributionId) : undefined;
-  const payment = paymentId ? getPaymentById(paymentId) : undefined;
+  const { data: apiDetail, isLoading: isApiLoading } = useContributionDetail(contributionId || '');
+  const localContribution = contributionId ? getContributionById(contributionId) : undefined;
+  const localPayment = paymentId ? getPaymentById(paymentId) : undefined;
 
-  // Strict validation: Require actual contribution with SUCCESS status
-  const isTransactionValid =
-    contribution &&
-    contribution.status === 'SUCCESS' &&
-    (!payment || payment.status === 'SUCCESS');
+  // Validation: In API mode check backend response, in local mode check local Zustand
+  const isTransactionValid = Config.useApi
+    ? !!apiDetail && (apiDetail.status === 'CONFIRMED' || apiDetail.status === 'SUCCESS')
+    : localContribution &&
+      (localContribution.status === 'SUCCESS' || localContribution.status === 'CONFIRMED') &&
+      (!localPayment || localPayment.status === 'SUCCESS');
 
-  const campaignId = contribution?.campaignId || payment?.campaignId || '';
+  const campaignId = apiDetail?.campaignId || localContribution?.campaignId || localPayment?.campaignId || '';
   const { data: campaign } = useCampaign(campaignId);
+
+  if (Config.useApi && isApiLoading) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 100 }}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={{ ...Typography.bodySmall, color: Palette.neutral500, marginTop: Spacing.sm }}>
+            Confirming sponsorship transaction...
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   if (!isTransactionValid) {
     return (
@@ -81,11 +98,26 @@ export default function ContributionSuccessScreen() {
     );
   }
 
-  const referenceCode = payment?.reference || contribution.paymentReference || 'N/A';
-  const amount = contribution.amount;
-  const adBudget = contribution.advertisingAllocation;
-  const minImpressions = contribution.estimatedImpressionsMin;
-  const maxImpressions = contribution.estimatedImpressionsMax;
+  const referenceCode =
+    apiDetail?.paymentReference ||
+    localPayment?.reference ||
+    localContribution?.paymentReference ||
+    'DEMO-CONFIRMED';
+  const amount = apiDetail ? apiDetail.amount : localContribution?.amount || 0;
+  const adBudget = apiDetail
+    ? apiDetail.impact.advertisingAllocation
+    : localContribution?.advertisingAllocation || 0;
+  const minImpressions = apiDetail
+    ? apiDetail.impact.estimatedImpressionsMin
+    : localContribution?.estimatedImpressionsMin || 0;
+  const maxImpressions = apiDetail
+    ? apiDetail.impact.estimatedImpressionsMax
+    : localContribution?.estimatedImpressionsMax || 0;
+  const displayCampaignTitle =
+    apiDetail?.campaignTitle ||
+    campaign?.title ||
+    localContribution?.campaignTitle ||
+    'Community Message Amplification';
 
   const goal = campaign?.goal || 2500;
   const raised = campaign?.raised || amount;
@@ -94,7 +126,7 @@ export default function ContributionSuccessScreen() {
   const handleShareCampaign = async () => {
     try {
       await Share.share({
-        message: `I just backed amplification for "${campaign?.title || 'this message'}"! Join me to fund its community distribution:`,
+        message: `I just backed amplification for "${displayCampaignTitle}"! Join me to fund its community distribution:`,
       });
     } catch {
       // Ignore dismiss
@@ -105,8 +137,8 @@ export default function ContributionSuccessScreen() {
     router.push({
       pathname: '/contribution/receipt',
       params: {
-        contributionId: contribution.id,
-        paymentId: payment?.id || '',
+        contributionId: apiDetail?.id || localContribution?.id || contributionId || '',
+        paymentId: localPayment?.id || paymentId || '',
       },
     });
   };
@@ -149,7 +181,7 @@ export default function ContributionSuccessScreen() {
           <View style={styles.summaryItem}>
             <Text style={styles.itemLabel}>Campaign</Text>
             <Text style={styles.itemValue} numberOfLines={2}>
-              {campaign?.title || contribution.campaignTitle || 'Community Message Amplification'}
+              {displayCampaignTitle}
             </Text>
           </View>
 

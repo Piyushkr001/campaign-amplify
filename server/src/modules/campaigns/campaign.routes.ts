@@ -58,10 +58,16 @@ router.patch(
   CampaignController.updateReach
 );
 
+import { campaignContributionsRouter } from '../contributions/contribution.routes';
+
 router.post(
   '/:id/submit',
   validateRequest({ params: campaignIdParamSchema, body: submitCampaignSchema }),
   CampaignController.submit
 );
 
+// Campaign Contribution Subroutes: /api/v1/campaigns/:id/contributions
+router.use('/:id/contributions', campaignContributionsRouter);
+
 export const campaignRouter = router;
+

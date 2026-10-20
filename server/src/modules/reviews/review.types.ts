@@ -5,6 +5,7 @@ export interface ReviewerCampaignListDTO {
   title: string;
   category: string;
   creator: string;
+  creatorName?: string;
   creatorType: string;
   creatorAvatar?: string;
   summary: string;
@@ -15,9 +16,13 @@ export interface ReviewerCampaignListDTO {
   reviewStartedAt?: string;
   requestedChangesAt?: string;
   approvedAt?: string;
+  createdAt?: string;
   updatedAt: string;
   sourcesCount: number;
   lastReviewFeedback?: string;
+  latestReviewFeedback?: string;
+  estimatedReachMin?: number;
+  estimatedReachMax?: number;
 }
 
 export interface CampaignReviewItemDTO {

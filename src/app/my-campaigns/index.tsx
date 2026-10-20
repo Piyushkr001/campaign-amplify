@@ -55,27 +55,50 @@ export default function MyCampaignsScreen() {
 
   // Filter campaigns by selected tab
   const activeStatusFilter = CREATOR_TAB_STATUS_MAPPING[selectedTab];
-  const filteredCampaigns = effectiveCampaigns.filter((c) => {
+  let filteredCampaigns = effectiveCampaigns.filter((c) => {
     if (!activeStatusFilter) return true;
     return activeStatusFilter.includes(c.status);
   });
 
-  // Calculate count for each tab
+  // Requirement #5: REMOVE DUPLICATE DRAFT CARD
+  // Prefer DraftCampaignCard for the active local working draft. Filter the matching backend DRAFT from the normal list.
+  if (showActiveDraft && draft.id) {
+    filteredCampaigns = filteredCampaigns.filter((c) => c.id !== draft.id);
+  }
+
+  // Calculate count for each tab without duplicate counting
   const getTabCount = (tab: CreatorDashboardTab) => {
-    if (tab === 'DRAFTS') {
-      const baseCount = effectiveCampaigns.filter((c) => c.status === 'DRAFT').length;
-      return hasMeaningfulDraft() ? baseCount + 1 : baseCount;
-    }
     const statuses = CREATOR_TAB_STATUS_MAPPING[tab];
-    if (!statuses) {
-      return effectiveCampaigns.length + (hasMeaningfulDraft() ? 1 : 0);
+    let baseList = effectiveCampaigns;
+    if (statuses) {
+      baseList = baseList.filter((c) => statuses.includes(c.status));
     }
-    return effectiveCampaigns.filter((c) => statuses.includes(c.status)).length;
+    const hasActiveLocalDraftForTab =
+      (tab === 'ALL' || tab === 'DRAFTS') && hasMeaningfulDraft();
+
+    if (hasActiveLocalDraftForTab) {
+      const duplicateCount = draft.id ? baseList.filter((c) => c.id === draft.id).length : 0;
+      return baseList.length - duplicateCount + 1;
+    }
+    return baseList.length;
   };
 
   const handleCardPress = (campaign: Campaign) => {
     if (campaign.status === 'DRAFT') {
-      router.push('/create-campaign/basics');
+      // Requirement #3: Server DRAFT -> Continue Editing -> load backend campaign into CampaignDraft store -> mode = NEW -> id = same server UUID
+      useCampaignDraftStore.getState().loadCampaignIntoDraft(campaign);
+      const step = campaign.draftStep || 1;
+      const stepRoute =
+        step === 2
+          ? '/create-campaign/story'
+          : step === 3
+          ? '/create-campaign/visuals'
+          : step === 4
+          ? '/create-campaign/reach'
+          : step === 5
+          ? '/create-campaign/submit'
+          : '/create-campaign/basics';
+      router.push(stepRoute as any);
     } else {
       router.push(`/my-campaigns/${campaign.id}`);
     }

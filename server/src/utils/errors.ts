@@ -57,3 +57,40 @@ export class IncompleteCampaignError extends AppError {
     super(message, 400, 'CAMPAIGN_INCOMPLETE', { step, fields });
   }
 }
+
+export class LifecycleConflictError extends AppError {
+  constructor(
+    message = 'Campaign status was modified concurrently.',
+    details?: unknown
+  ) {
+    super(message, 409, 'LIFECYCLE_CONFLICT', details);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(
+    message = 'You do not have permission to perform this action.',
+    details?: unknown
+  ) {
+    super(message, 403, 'FORBIDDEN', details);
+  }
+}
+
+export class CampaignNotBackableError extends AppError {
+  constructor(
+    message = 'Campaign is not currently accepting financial contributions.',
+    details?: unknown
+  ) {
+    super(message, 409, 'CAMPAIGN_NOT_BACKABLE', details);
+  }
+}
+
+export class FundingConflictError extends AppError {
+  constructor(
+    message = 'Contribution could not be processed due to a funding state conflict.',
+    details?: unknown
+  ) {
+    super(message, 409, 'FUNDING_CONFLICT', details);
+  }
+}
+

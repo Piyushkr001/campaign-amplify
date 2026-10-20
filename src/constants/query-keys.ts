@@ -36,3 +36,13 @@ export const reviewKeys = {
     ['reviews', 'queue', filters] as const,
   detail: (id: string) => ['reviews', 'detail', id] as const,
 };
+
+export const contributionKeys = {
+  all: ['contributions'] as const,
+  me: () => ['contributions', 'me'] as const,
+  detail: (id: string) => ['contributions', 'detail', id] as const,
+  receipt: (id: string) => ['contributions', 'receipt', id] as const,
+  quote: (campaignId: string, amount: number) =>
+    ['contributions', 'quote', campaignId, amount] as const,
+};
+

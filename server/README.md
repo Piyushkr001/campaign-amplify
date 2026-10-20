@@ -142,6 +142,46 @@ All write endpoints use demo creator credentials until JWT authentication is int
 - **`PATCH /api/v1/campaigns/:id/reach`**: Updates Step 4 reach targeting (`locations`, `interests`, `channels`, `audienceDescription`) with atomic upsert into `campaign_targeting` and syncs authoritative `durationDays` to the campaign record.
 - **`POST /api/v1/campaigns/:id/submit`**: Step 5 final submission. Performs full validation across all 5 steps (Basics, Story, Visuals, Reach, Funding Goal). If any required field is missing, returns `400 Bad Request` with `CAMPAIGN_INCOMPLETE` error details. On success, atomically transitions state to `SUBMITTED_FOR_REVIEW`, sets `submittedAt`, and records an entry in `campaign_status_history`.
 
+### 5. Contribution & Payment APIs
+- **`POST /api/v1/campaigns/:id/contributions/quote`**: Computes authoritative server breakdown according to `CAMPAIGN_POLICY` (85% advertising, 10% platform, 5% processing; 20-30 estimated impressions per ad dollar).
+- **`POST /api/v1/campaigns/:id/contributions`**: Creates a new contribution record in `PENDING` status for a campaign that is currently in `FUNDING` state. Returns `409 CAMPAIGN_NOT_BACKABLE` if the campaign has already closed or reached its goal.
+- **`POST /api/v1/payments/simulate`**: Simulates payment processing (`SUCCESS`, `FAILED`, `CANCELLED`).
+  - **Transactional Execution**: On `SUCCESS`, atomically updates payment to `SUCCESS`, contribution to `CONFIRMED`, increments campaign `amountRaised` and `backerCount` using atomic SQL expressions, and conditionally transitions campaign to `FUNDING_GOAL_REACHED` if `amountRaised >= fundingGoal`.
+  - **Idempotency Guarantee**: If a `SUCCESS` request is submitted more than once for the same contribution, the endpoint returns the existing successful transaction record without double-incrementing campaign funding.
+  - **Zero Card Data Stored**: Never logs or stores card numbers, CVVs, or expirations; only stores optional masked `cardLast4`.
+- **`GET /api/v1/me/contributions`**: Returns the current demo backer's contribution history.
+- **`GET /api/v1/me/contributions/:id`**: Returns detailed contribution record with fee breakdown, impact impressions, and payment metadata.
+- **`GET /api/v1/me/contributions/:id/receipt`**: Returns verified demo sponsorship receipt for confirmed contributions. Includes standard non-donation disclaimer.
+
+---
+
+## 💰 Money Representation Decision
+The platform consistently uses **whole-dollar integer representation** across all database columns and API contracts:
+- `campaigns.funding_goal`: integer (e.g., `10000` = $10,000)
+- `campaigns.amount_raised`: integer (e.g., `2500` = $2,500)
+- `contributions.amount`: integer (e.g., `100` = $100)
+- `payments.amount`: integer (e.g., `100` = $100)
+This model ensures complete consistency with existing seeded campaigns and UI formatters without fractional cent drift.
+
+---
+
+## 🧪 Automated Integration Tests
+
+Run the full suite of automated server-side integration tests against Neon PostgreSQL:
+
+```bash
+cd server
+
+# 1. Draft Sync & Multi-step Persistence Test Suite
+bun run test:sync
+
+# 2. Editorial Review & Lifecycle State Machine Test Suite
+bun run test:lifecycle
+
+# 3. Contribution & Payment Transaction Test Suite
+bun run test:contribution
+```
+
 ---
 
 ## 📱 Mobile Client Integration
@@ -155,5 +195,5 @@ In the root React Native / Expo application:
    - **iOS Simulator**: `EXPO_PUBLIC_API_URL=http://localhost:5001/api/v1`
    - **Android Emulator**: `EXPO_PUBLIC_API_URL=http://10.0.2.2:5001/api/v1`
    - **Physical Device**: `EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:5001/api/v1`
-3. Set `EXPO_PUBLIC_USE_API=true` to enable real backend reads and writes.
+3. Set `EXPO_PUBLIC_USE_API=true` to enable real backend reads, writes, contributions, and payments.
 4. If set to `false`, the mobile app operates in local prototype mode (Zustand + AsyncStorage).

@@ -46,6 +46,8 @@ export interface CampaignListDTO {
   featured: boolean;
   createdAt: string;
   distributionChannels: string[];
+  draftStep?: number;
+  latestReviewFeedback?: string;
 }
 
 export interface CampaignDetailDTO extends CampaignListDTO {

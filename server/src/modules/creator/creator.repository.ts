@@ -62,6 +62,17 @@ export const CreatorRepository = {
             durationDays: row.durationDays,
           });
 
+          let latestFeedback: string | undefined = undefined;
+          if (row.status === 'CHANGES_REQUESTED') {
+            const reviewRows = await db
+              .select({ feedback: schema.campaignReviews.feedback })
+              .from(schema.campaignReviews)
+              .where(eq(schema.campaignReviews.campaignId, row.id))
+              .orderBy(desc(schema.campaignReviews.createdAt))
+              .limit(1);
+            latestFeedback = reviewRows[0]?.feedback || undefined;
+          }
+
           return {
             id: row.id,
             title: row.title || 'Untitled Campaign',
@@ -91,6 +102,8 @@ export const CreatorRepository = {
             featured: row.featured,
             createdAt: row.createdAt.toISOString(),
             distributionChannels: channels,
+            draftStep: row.draftStep || 1,
+            latestReviewFeedback: latestFeedback,
           };
         })
       );
@@ -237,6 +250,7 @@ export const CreatorRepository = {
         failedAt: row.failedAt?.toISOString(),
         backerCount: row.backerCount,
         distributionChannels: channels,
+        draftStep: row.draftStep || 1,
         useOfFunds: {
           advertising: CAMPAIGN_POLICY.advertisingPercentage,
           platformFee: CAMPAIGN_POLICY.platformPercentage,
