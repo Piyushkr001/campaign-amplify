@@ -14,8 +14,16 @@ export function errorHandler(
   }
 
   if (err instanceof ZodError) {
+    const isIdParamError = err.issues.some(
+      (issue) =>
+        issue.path.includes('id') &&
+        (issue.code === 'invalid_string' ||
+          issue.message.toLowerCase().includes('uuid') ||
+          issue.message.toLowerCase().includes('campaign id'))
+    );
+    const code = isIdParamError ? 'INVALID_CAMPAIGN_ID' : 'VALIDATION_ERROR';
     const message = err.issues.map((i) => i.message).join('; ') || 'Invalid request payload.';
-    return apiError(res, 400, 'VALIDATION_ERROR', message, err.format());
+    return apiError(res, 400, code, message, err.format());
   }
 
   // Hide raw internal/SQL errors in production/demo

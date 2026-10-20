@@ -17,6 +17,12 @@ export type CampaignStatus =
   | 'REFUND_PENDING'
   | 'FAILED';
 
+export type BackendCampaignStatus = CampaignStatus;
+
+export type CampaignDraftMode = 'NEW' | 'REVISION';
+
+export type CampaignSyncStatus = 'LOCAL_ONLY' | 'PENDING' | 'SYNCED' | 'ERROR';
+
 export interface CampaignSource {
   id: string;
   title: string;
@@ -26,6 +32,10 @@ export interface CampaignSource {
 
 export interface CampaignDraft {
   id?: string;
+  mode: CampaignDraftMode;
+  syncStatus: CampaignSyncStatus;
+  lastSyncError?: string;
+  lastSyncedAt?: string;
   currentStep: 1 | 2 | 3 | 4 | 5;
 
   title: string;

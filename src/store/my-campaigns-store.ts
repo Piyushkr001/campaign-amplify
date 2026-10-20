@@ -68,7 +68,13 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
       },
 
       addFromDraft: (draft: CampaignDraft) => {
-        const id = generateId('camp');
+        const id = draft.id ?? generateId('camp');
+        const existing = get().campaigns.find((c) => c.id === id);
+        if (existing) {
+          const updated = get().updateFromDraft(id, draft);
+          if (updated) return updated;
+        }
+
         const goal = draft.fundingGoal || 2500;
         const { min: estimatedReachMin, max: estimatedReachMax } = estimateReach(goal);
         const useOfFundsBreakdown = calculateUseOfFunds(goal);

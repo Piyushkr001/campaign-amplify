@@ -27,7 +27,7 @@ export const listCampaignsQuerySchema = z
   }));
 
 export const campaignIdParamSchema = z.object({
-  id: z.string().min(1, 'Campaign ID is required.'),
+  id: z.string().trim().uuid('Invalid campaign ID format. Expected a valid UUID.'),
 });
 
 export const createDraftSchema = z.object({
@@ -38,50 +38,63 @@ export const updateBasicsSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(3, 'Title must be at least 3 characters.')
-    .max(60, 'Title cannot exceed 60 characters.'),
+    .min(5, 'Campaign title must be at least 5 characters.')
+    .max(60, 'Campaign title cannot exceed 60 characters.'),
   category: z.string().trim().min(1, 'Category is required.'),
   creatorName: z
     .string()
     .trim()
-    .min(2, 'Creator name must be at least 2 characters.')
-    .max(100, 'Creator name cannot exceed 100 characters.'),
+    .min(3, 'Creator or organization name must be at least 3 characters.')
+    .max(80, 'Creator name cannot exceed 80 characters.'),
   summary: z
     .string()
     .trim()
-    .min(10, 'Summary must be at least 10 characters.')
-    .max(200, 'Summary cannot exceed 200 characters.'),
-  coverImage: z.string().optional(),
+    .min(20, 'Summary must be at least 20 characters.')
+    .max(240, 'Summary cannot exceed 240 characters.'),
+  coverImage: z.string().nullable().optional(),
 });
 
 export const updateStorySchema = z.object({
-  storyHeadline: z.string().trim().max(120).optional(),
-  storyIntro: z.string().trim().max(250).optional(),
+  storyHeadline: z
+    .string()
+    .trim()
+    .min(5, 'Story headline must be at least 5 characters.')
+    .max(100, 'Story headline cannot exceed 100 characters.')
+    .optional(),
+  storyIntro: z
+    .string()
+    .trim()
+    .min(20, 'Story introduction must be at least 20 characters.')
+    .max(500, 'Story introduction cannot exceed 500 characters.')
+    .optional(),
   storyContent: z
     .string()
     .trim()
-    .min(20, 'Story narrative must be at least 20 characters.'),
-  storyImage: z.string().optional(),
-  storyImageCaption: z.string().trim().max(150).optional(),
-  storyImageCredit: z.string().trim().max(100).optional(),
-  suggestedAction: z.string().trim().max(200).optional(),
+    .min(100, 'Main story must be at least 100 characters to provide sufficient context.')
+    .max(5000, 'Story cannot exceed 5,000 characters.'),
+  storyImage: z.string().nullable().optional(),
+  storyImageCaption: z.string().trim().max(120, 'Caption cannot exceed 120 characters.').optional(),
+  storyImageCredit: z.string().trim().max(80, 'Credit cannot exceed 80 characters.').optional(),
+  suggestedAction: z.string().trim().max(100, 'Suggested action cannot exceed 100 characters.').optional(),
   sources: z
     .array(
       z.object({
+        id: z.string().optional(),
         title: z.string().trim().min(1, 'Source title is required.'),
         url: z.string().trim().url('Source URL must be a valid web address.'),
         publisher: z.string().trim().max(100).optional(),
       })
     )
+    .min(1, 'At least one verified supporting source citation is required.')
     .default([]),
 });
 
 export const updateVisualsSchema = z.object({
-  coverImage: z.string().optional(),
+  coverImage: z.string().nullable().optional(),
   adHeadline: z
     .string()
     .trim()
-    .min(3, 'Ad headline must be at least 3 characters.')
+    .min(5, 'Ad headline must be at least 5 characters.')
     .max(60, 'Ad headline cannot exceed 60 characters.'),
   adDescription: z
     .string()
@@ -92,15 +105,20 @@ export const updateVisualsSchema = z.object({
     .string()
     .trim()
     .min(2, 'Ad CTA must be at least 2 characters.')
-    .max(30, 'Ad CTA cannot exceed 30 characters.'),
-  adImage: z.string().optional(),
+    .max(25, 'Ad CTA cannot exceed 25 characters.'),
+  adImage: z.string().nullable().optional(),
 });
 
 export const updateReachSchema = z.object({
-  locations: z.array(z.string().trim()).default([]),
-  interests: z.array(z.string().trim()).default([]),
-  channels: z.array(z.string().trim()).default([]),
-  audienceDescription: z.string().trim().max(300).optional(),
+  locations: z.array(z.string().trim()).min(1, 'Select or enter at least one target location.'),
+  interests: z.array(z.string().trim()).min(1, 'Select at least one audience interest topic.'),
+  channels: z.array(z.string().trim()).min(1, 'Select at least one distribution channel preference.'),
+  audienceDescription: z
+    .string()
+    .trim()
+    .min(10, 'Please describe your audience in at least 10 characters.')
+    .max(300, 'Audience description cannot exceed 300 characters.')
+    .optional(),
   durationDays: z.coerce
     .number()
     .int()
@@ -113,7 +131,7 @@ export const submitCampaignSchema = z.object({
   fundingGoal: z.coerce
     .number()
     .int()
-    .min(500, 'Minimum amplification funding goal is $500.')
+    .min(100, 'Minimum amplification funding goal is $100.')
     .max(1000000, 'Maximum amplification funding goal is $1,000,000.'),
 });
 

@@ -48,6 +48,7 @@ export default function CreateReachScreen() {
     updateField,
     updateFields,
     setCurrentStep,
+    setSyncStatus,
     saveAsDraft,
     lastSavedAt,
     hasHydrated,
@@ -165,18 +166,27 @@ export default function CreateReachScreen() {
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    if (Config.useApi && draft.id) {
+    if (Config.useApi) {
       try {
-        await CampaignService.saveReach(draft.id, {
+        setSyncStatus('PENDING');
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveReach(serverId, {
           locations,
           interests,
           channels,
           audienceDescription,
           durationDays,
         });
+        setSyncStatus('SYNCED');
         setSaveBannerText('Reach settings saved to cloud & device');
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[CreateReach] Cloud sync failed:', err);
+        setSyncStatus('ERROR', err?.message || 'Server sync failed');
         setSaveBannerText('Saved on this device (offline mode)');
       }
     } else {
@@ -185,7 +195,7 @@ export default function CreateReachScreen() {
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const result = CampaignReachSchema.safeParse({
       locations,
       interests,
@@ -216,14 +226,27 @@ export default function CreateReachScreen() {
     });
     setCurrentStep(5);
 
-    if (Config.useApi && draft.id) {
-      CampaignService.saveReach(draft.id, {
-        locations,
-        interests,
-        channels,
-        audienceDescription,
-        durationDays,
-      }).catch((err) => console.warn('[CreateReach] Background sync warning:', err));
+    if (Config.useApi) {
+      setSyncStatus('PENDING');
+      try {
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveReach(serverId, {
+          locations,
+          interests,
+          channels,
+          audienceDescription,
+          durationDays,
+        });
+        setSyncStatus('SYNCED');
+      } catch (err: any) {
+        console.warn('[CreateReach] Server sync failed during step navigation:', err);
+        setSyncStatus('ERROR', err?.message || 'Failed to sync Step 4 to server');
+      }
     }
 
     router.push('/create-campaign/submit');
@@ -235,7 +258,9 @@ export default function CreateReachScreen() {
       <CampaignStepIndicator
         currentStep={4}
         lastSavedAt={lastSavedAt}
+        syncStatus={draft.syncStatus}
         onSaveDraft={handleSaveDraft}
+        onRetrySync={handleSaveDraft}
       />
 
       {/* Header */}

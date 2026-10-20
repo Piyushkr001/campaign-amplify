@@ -33,6 +33,7 @@ export default function CreateVisualsScreen() {
     updateField,
     updateFields,
     setCurrentStep,
+    setSyncStatus,
     saveAsDraft,
     lastSavedAt,
     hasHydrated,
@@ -119,18 +120,27 @@ export default function CreateVisualsScreen() {
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    if (Config.useApi && draft.id) {
+    if (Config.useApi) {
       try {
-        await CampaignService.saveVisuals(draft.id, {
+        setSyncStatus('PENDING');
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveVisuals(serverId, {
           coverImage,
           adImage,
           adHeadline,
           adDescription,
           adCTA,
         });
+        setSyncStatus('SYNCED');
         setSaveBannerText('Creative saved to cloud & device');
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[CreateVisuals] Cloud sync failed:', err);
+        setSyncStatus('ERROR', err?.message || 'Server sync failed');
         setSaveBannerText('Saved on this device (offline mode)');
       }
     } else {
@@ -139,7 +149,7 @@ export default function CreateVisualsScreen() {
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const result = CampaignVisualsSchema.safeParse({
       coverImage,
       adImage,
@@ -170,14 +180,27 @@ export default function CreateVisualsScreen() {
     });
     setCurrentStep(4);
 
-    if (Config.useApi && draft.id) {
-      CampaignService.saveVisuals(draft.id, {
-        coverImage,
-        adImage,
-        adHeadline,
-        adDescription,
-        adCTA,
-      }).catch((err) => console.warn('[CreateVisuals] Background sync warning:', err));
+    if (Config.useApi) {
+      setSyncStatus('PENDING');
+      try {
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveVisuals(serverId, {
+          coverImage,
+          adImage,
+          adHeadline,
+          adDescription,
+          adCTA,
+        });
+        setSyncStatus('SYNCED');
+      } catch (err: any) {
+        console.warn('[CreateVisuals] Server sync failed during step navigation:', err);
+        setSyncStatus('ERROR', err?.message || 'Failed to sync Step 3 to server');
+      }
     }
 
     router.push('/create-campaign/reach');
@@ -189,7 +212,9 @@ export default function CreateVisualsScreen() {
       <CampaignStepIndicator
         currentStep={3}
         lastSavedAt={lastSavedAt}
+        syncStatus={draft.syncStatus}
         onSaveDraft={handleSaveDraft}
+        onRetrySync={handleSaveDraft}
       />
 
       {/* Header */}

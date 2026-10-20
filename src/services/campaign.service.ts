@@ -1,10 +1,17 @@
 import { MOCK_CAMPAIGNS } from '@/data/campaigns';
-import { Campaign } from '@/types/campaign';
+import { Campaign, CampaignDraft } from '@/types/campaign';
 import { CategoryName } from '@/constants/categories';
 import { Config } from '@/constants/config';
 import { apiClient } from '@/services/api';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { getEffectiveCampaign, isEffectivePublic } from '@/utils/effective-campaign';
+import { sanitizeRemoteImageUrl } from '@/utils/assets';
+import {
+  CampaignListApiDTO,
+  CampaignDetailApiDTO,
+  CampaignDraftApiDTO,
+  CampaignSubmitApiDTO,
+} from '@/types/campaign-api';
 
 export interface CampaignFilterOptions {
   category?: CategoryName;
@@ -12,58 +19,63 @@ export interface CampaignFilterOptions {
   sortBy?: 'featured' | 'newest' | 'most_funded' | 'ending_soon';
 }
 
-function mapDtoToCampaign(dto: any): Campaign {
+function mapDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Campaign {
+  const detail = dto as CampaignDetailApiDTO;
   return {
     id: dto.id,
     title: dto.title,
-    category: dto.category,
+    category: dto.category as any,
     creator: dto.creator,
-    creatorType: dto.creatorType || 'Independent Creator',
+    creatorType: (dto.creatorType as any) || 'Independent Creator',
     creatorAvatar: dto.creatorAvatar,
     summary: dto.summary,
-    story: dto.story || dto.storyContent || '',
-    storyHeadline: dto.storyHeadline,
-    storyIntro: dto.storyIntro,
-    storyContent: dto.storyContent,
-    storyImage: dto.storyImage,
-    storyImageCaption: dto.storyImageCaption,
-    storyImageCredit: dto.storyImageCredit,
-    suggestedAction: dto.suggestedAction,
-    adImage: dto.adImage,
-    adHeadline: dto.adHeadline,
-    adDescription: dto.adDescription,
-    adCTA: dto.adCTA,
-    locations: dto.locations,
-    interests: dto.interests,
-    channels: dto.channels,
-    audienceDescription: dto.audienceDescription,
-    durationDays: dto.durationDays,
+    story: detail.story || detail.storyContent || '',
+    storyHeadline: detail.storyHeadline,
+    storyIntro: detail.storyIntro,
+    storyContent: detail.storyContent,
+    storyImage: detail.storyImage || detail.storyImageUrl,
+    storyImageCaption: detail.storyImageCaption,
+    storyImageCredit: detail.storyImageCredit,
+    suggestedAction: detail.suggestedAction,
+    adImage: detail.adImage,
+    adHeadline: detail.adHeadline,
+    adDescription: detail.adDescription,
+    adCTA: detail.adCTA,
+    locations: detail.locations,
+    interests: detail.interests,
+    channels: detail.channels,
+    audienceDescription: detail.audienceDescription,
+    durationDays: detail.durationDays || dto.daysRemaining || 14,
     coverImage: dto.coverImage || dto.coverImageUrl || '',
     raised: dto.raised ?? dto.amountRaised ?? 0,
-    goal: dto.fundingGoal ?? dto.goal ?? 0,
+    goal: dto.fundingGoal ?? 0,
     estimatedReachMin: dto.estimatedReachMin ?? dto.estimatedImpressionsMin ?? 0,
     estimatedReachMax: dto.estimatedReachMax ?? dto.estimatedImpressionsMax ?? 0,
     status: dto.status,
     daysRemaining: dto.daysRemaining,
-    featured: !!dto.featured,
+    featured: Boolean(dto.featured),
     createdAt: dto.createdAt,
-    submittedAt: dto.submittedAt,
+    submittedAt: detail.submittedAt,
     backerCount: dto.backerCount,
     distributionChannels: dto.distributionChannels || [],
-    useOfFunds: dto.useOfFunds || {
+    useOfFunds: detail.useOfFunds || {
       advertising: Config.feeStructure.advertisingPercentage,
       platformFee: Config.feeStructure.platformFeePercentage,
       paymentProcessing: Config.feeStructure.paymentProcessingPercentage,
     },
-    supportingSources: dto.supportingSources || [],
-    approvedAt: dto.approvedAt,
-    fundingGoalReachedAt: dto.fundingGoalReachedAt,
-    fundingEndedAt: dto.fundingEndedAt,
-    distributionPreparationAt: dto.distributionPreparationAt,
-    promotionStartedAt: dto.promotionStartedAt,
-    completedAt: dto.completedAt,
-    cancelledAt: dto.cancelledAt,
-    failedAt: dto.failedAt,
+    supportingSources: (detail.supportingSources || []).map((s) => ({
+      title: s.title,
+      url: s.url,
+      publisher: s.publisher,
+    })),
+    approvedAt: detail.approvedAt,
+    fundingGoalReachedAt: detail.fundingGoalReachedAt,
+    fundingEndedAt: detail.fundingEndedAt,
+    distributionPreparationAt: detail.distributionPreparationAt,
+    promotionStartedAt: detail.promotionStartedAt,
+    completedAt: detail.completedAt,
+    cancelledAt: detail.cancelledAt,
+    failedAt: detail.failedAt,
   };
 }
 
@@ -72,7 +84,7 @@ export const CampaignService = {
     // If Config.useApi is enabled, try the backend API first
     if (Config.useApi) {
       try {
-        const params: Record<string, any> = {};
+        const params: Record<string, string | number> = {};
         if (options?.category && options.category !== 'All') {
           params.category = options.category;
         }
@@ -83,11 +95,17 @@ export const CampaignService = {
           params.sort = options.sortBy;
         }
 
-        const response = await apiClient.get('/campaigns', { params });
+        const response = await apiClient.get<{ success: boolean; data: CampaignListApiDTO[] }>(
+          '/campaigns',
+          { params }
+        );
         if (response.data?.success && Array.isArray(response.data?.data)) {
           return response.data.data.map(mapDtoToCampaign);
         }
       } catch (err) {
+        if (Config.strictApi) {
+          throw err;
+        }
         console.warn('[CampaignService] Backend API request failed, falling back to local source:', err);
       }
     }
@@ -153,7 +171,9 @@ export const CampaignService = {
     // If Config.useApi is enabled, attempt fetching from backend API
     if (Config.useApi) {
       try {
-        const response = await apiClient.get(`/campaigns/${id}`);
+        const response = await apiClient.get<{ success: boolean; data: CampaignDetailApiDTO }>(
+          `/campaigns/${id}`
+        );
         if (response.data?.success && response.data?.data) {
           return mapDtoToCampaign(response.data.data);
         }
@@ -161,6 +181,9 @@ export const CampaignService = {
         if (err?.response?.status === 404) {
           // Explicitly not found or private in backend
           return undefined;
+        }
+        if (Config.strictApi) {
+          throw err;
         }
         console.warn('[CampaignService] Backend API lookup failed, falling back to local source:', err);
       }
@@ -239,10 +262,15 @@ export const CampaignService = {
   /**
    * Initializes a new campaign draft in backend database.
    */
-  createDraft: async (title?: string): Promise<{ id: string; status: string }> => {
-    const response = await apiClient.post('/campaigns', { title });
+  createDraft: async (title?: string): Promise<CampaignDraftApiDTO> => {
+    const response = await apiClient.post<{ success: boolean; data: CampaignDraftApiDTO }>(
+      '/campaigns',
+      { title }
+    );
     if (!response.data?.success || !response.data?.data) {
-      throw new Error(response.data?.error?.message || 'Failed to create campaign draft on server.');
+      throw new Error(
+        (response.data as any)?.error?.message || 'Failed to create campaign draft on server.'
+      );
     }
     return response.data.data;
   },
@@ -257,10 +285,17 @@ export const CampaignService = {
       category: string;
       creatorName: string;
       summary: string;
-      coverImage?: string;
+      coverImage?: string | null;
     }
   ) => {
-    const response = await apiClient.patch(`/campaigns/${id}/basics`, data);
+    const payload = {
+      title: data.title,
+      category: data.category,
+      creatorName: data.creatorName,
+      summary: data.summary,
+      coverImage: sanitizeRemoteImageUrl(data.coverImage) || null,
+    };
+    const response = await apiClient.patch(`/campaigns/${id}/basics`, payload);
     return response.data?.data;
   },
 
@@ -273,14 +308,29 @@ export const CampaignService = {
       storyHeadline?: string;
       storyIntro?: string;
       storyContent: string;
-      storyImage?: string;
+      storyImage?: string | null;
       storyImageCaption?: string;
       storyImageCredit?: string;
       suggestedAction?: string;
-      sources: Array<{ title: string; url: string; publisher?: string }>;
+      sources: Array<{ id?: string; title: string; url: string; publisher?: string }>;
     }
   ) => {
-    const response = await apiClient.patch(`/campaigns/${id}/story`, data);
+    const payload = {
+      storyHeadline: data.storyHeadline || undefined,
+      storyIntro: data.storyIntro || undefined,
+      storyContent: data.storyContent,
+      storyImage: sanitizeRemoteImageUrl(data.storyImage) || null,
+      storyImageCaption: data.storyImageCaption || undefined,
+      storyImageCredit: data.storyImageCredit || undefined,
+      suggestedAction: data.suggestedAction || undefined,
+      sources: (data.sources || []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        url: s.url,
+        publisher: s.publisher || undefined,
+      })),
+    };
+    const response = await apiClient.patch(`/campaigns/${id}/story`, payload);
     return response.data?.data;
   },
 
@@ -290,14 +340,21 @@ export const CampaignService = {
   saveVisuals: async (
     id: string,
     data: {
-      coverImage?: string;
+      coverImage?: string | null;
       adHeadline: string;
       adDescription: string;
       adCTA: string;
-      adImage?: string;
+      adImage?: string | null;
     }
   ) => {
-    const response = await apiClient.patch(`/campaigns/${id}/visuals`, data);
+    const payload = {
+      coverImage: sanitizeRemoteImageUrl(data.coverImage) || null,
+      adHeadline: data.adHeadline,
+      adDescription: data.adDescription,
+      adCTA: data.adCTA,
+      adImage: sanitizeRemoteImageUrl(data.adImage) || null,
+    };
+    const response = await apiClient.patch(`/campaigns/${id}/visuals`, payload);
     return response.data?.data;
   },
 
@@ -314,18 +371,95 @@ export const CampaignService = {
       durationDays: number;
     }
   ) => {
-    const response = await apiClient.patch(`/campaigns/${id}/reach`, data);
+    const payload = {
+      locations: data.locations,
+      interests: data.interests,
+      channels: data.channels,
+      audienceDescription: data.audienceDescription || undefined,
+      durationDays: data.durationDays,
+    };
+    const response = await apiClient.patch(`/campaigns/${id}/reach`, payload);
     return response.data?.data;
   },
 
   /**
    * Submits campaign for editorial review in backend database.
    */
-  submitCampaign: async (id: string, data: { fundingGoal: number }) => {
-    const response = await apiClient.post(`/campaigns/${id}/submit`, data);
+  submitCampaign: async (id: string, data: { fundingGoal: number }): Promise<CampaignSubmitApiDTO> => {
+    const response = await apiClient.post<{ success: boolean; data: CampaignSubmitApiDTO }>(
+      `/campaigns/${id}/submit`,
+      data
+    );
     if (!response.data?.success) {
-      throw response.data?.error || new Error('Failed to submit campaign for review.');
+      throw (response.data as any)?.error || new Error('Failed to submit campaign for review.');
     }
     return response.data.data;
+  },
+
+  /**
+   * Flushes all 4 setup steps of a CampaignDraft sequentially to the backend server.
+   * Ensures that:
+   * 1. A backend draft row exists (creates one via POST /campaigns if draft.id is missing).
+   * 2. Step 1 (Basics), Step 2 (Story), Step 3 (Visuals), and Step 4 (Reach) are all fully up to date.
+   * 3. Device-local images are sanitized so only remote HTTPS URLs reach PostgreSQL.
+   * Returns the confirmed server UUID.
+   */
+  syncFullDraftToServer: async (draft: CampaignDraft): Promise<string> => {
+    let serverId = draft.id;
+    if (!serverId) {
+      const created = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+      serverId = created.id;
+    }
+
+    // Step 1: Basics
+    await CampaignService.saveBasics(serverId, {
+      title: draft.title || 'Untitled Draft',
+      category: draft.category === 'All' ? 'Environment' : draft.category,
+      creatorName: draft.creatorName || 'Community Campaigner',
+      summary: draft.summary || 'Campaign amplification message summary.',
+      coverImage: draft.coverImage,
+    });
+
+    // Step 2: Story
+    await CampaignService.saveStory(serverId, {
+      storyHeadline: draft.storyHeadline || undefined,
+      storyIntro: draft.storyIntro || undefined,
+      storyContent: draft.storyContent || draft.summary || 'Campaign story narrative in progress.',
+      storyImage: draft.storyImage,
+      storyImageCaption: draft.storyImageCaption || undefined,
+      storyImageCredit: draft.storyImageCredit || undefined,
+      suggestedAction: draft.suggestedAction || undefined,
+      sources: (draft.sources || []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        url: s.url,
+        publisher: s.publisher,
+      })),
+    });
+
+    // Step 3: Visuals
+    await CampaignService.saveVisuals(serverId, {
+      coverImage: draft.coverImage,
+      adImage: draft.adImage,
+      adHeadline: draft.adHeadline || draft.title || 'Campaign Message',
+      adDescription: draft.adDescription || draft.summary || 'Help amplify this message.',
+      adCTA: draft.adCTA || 'Learn More',
+    });
+
+    // Step 4: Reach
+    await CampaignService.saveReach(serverId, {
+      locations: draft.locations && draft.locations.length > 0 ? draft.locations : ['National'],
+      interests:
+        draft.interests && draft.interests.length > 0 ? draft.interests : ['General Public'],
+      channels:
+        draft.channels && draft.channels.length > 0 ? draft.channels : ['Meta Targeted Ads'],
+      audienceDescription:
+        draft.audienceDescription && draft.audienceDescription.trim().length >= 10
+          ? draft.audienceDescription
+          : 'Civic-minded community members and stakeholders',
+      durationDays: draft.durationDays || 14,
+    });
+
+    return serverId;
   },
 };

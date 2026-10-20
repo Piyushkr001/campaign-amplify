@@ -1,11 +1,17 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Campaign, CampaignDraft, CampaignSource } from '@/types/campaign';
+import { Campaign, CampaignDraft, CampaignSource, CampaignSyncStatus } from '@/types/campaign';
 import { generateId } from '@/utils/id';
 
 export const INITIAL_CAMPAIGN_DRAFT: CampaignDraft = {
+  id: undefined,
+  mode: 'NEW',
+  syncStatus: 'LOCAL_ONLY',
+  lastSyncError: undefined,
+  lastSyncedAt: undefined,
   currentStep: 1,
+
   title: '',
   category: 'Environment',
   creatorName: '',
@@ -45,6 +51,7 @@ export interface CampaignDraftStore {
   updateField: <K extends keyof CampaignDraft>(key: K, value: CampaignDraft[K]) => void;
   updateFields: (fields: Partial<CampaignDraft>) => void;
   setCurrentStep: (step: 1 | 2 | 3 | 4 | 5) => void;
+  setSyncStatus: (status: CampaignSyncStatus, error?: string) => void;
   addSource: (source: Omit<CampaignSource, 'id'> & { id?: string }) => void;
   updateSource: (id: string, updated: Partial<CampaignSource>) => void;
   removeSource: (id: string) => void;
@@ -125,6 +132,18 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
         }));
       },
 
+      setSyncStatus: (status: CampaignSyncStatus, error?: string) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          draft: {
+            ...state.draft,
+            syncStatus: status,
+            lastSyncError: error,
+            lastSyncedAt: status === 'SYNCED' ? now : state.draft.lastSyncedAt,
+          },
+        }));
+      },
+
       addSource: (source) => {
         const newSource: CampaignSource = {
           id: source.id || generateId('src'),
@@ -195,9 +214,8 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
       },
 
       /**
-       * Centralized action to populate the active draft with an existing campaign's data.
-       * Crucially sets `draft.id = campaign.id` so that revisions edit the same campaign record
-       * rather than fabricating a duplicate campaign.
+       * Centralized action to populate the active draft with an existing campaign's data for revision.
+       * Sets `draft.id = campaign.id`, `draft.mode = 'REVISION'`, and `draft.syncStatus = 'SYNCED'`.
        */
       loadCampaignIntoDraft: (campaign: Campaign, step: 1 | 2 | 3 | 4 | 5 = 2) => {
         const now = new Date().toISOString();
@@ -211,6 +229,10 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
         set({
           draft: {
             id: campaign.id,
+            mode: 'REVISION',
+            syncStatus: 'SYNCED',
+            lastSyncError: undefined,
+            lastSyncedAt: now,
             currentStep: step,
             title: campaign.title,
             category: campaign.category,
@@ -262,7 +284,7 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
       hasMeaningfulDraft: () => {
         const { draft } = get();
         return (
-          Boolean(draft.id) ||
+          draft.mode === 'REVISION' ||
           draft.title.trim().length > 0 ||
           draft.summary.trim().length > 0 ||
           draft.storyContent.trim().length > 0 ||
@@ -272,7 +294,7 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
       },
 
       isRevision: () => {
-        return Boolean(get().draft.id);
+        return get().draft.mode === 'REVISION';
       },
     }),
     {

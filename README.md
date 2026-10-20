@@ -23,20 +23,94 @@ A mobile platform for community-funded message amplification and distribution bu
 
 ---
 
-## 🚀 Dual Mode Architecture (Local Mode vs. API Mode)
+## 🚀 Execution Modes (Local vs. API vs. Strict API)
 
-The application supports both an offline-capable local prototype mode and a live PostgreSQL backend mode.
+The application supports three operational configurations:
 
 ### 1. Local Mode (`EXPO_PUBLIC_USE_API=false`)
 - Operates entirely client-side using Zustand stores, mock campaigns, and local `AsyncStorage`.
 - Campaign creation drafts are preserved in device storage.
 - Ideal for fast offline demos, testing UI flows, and presentations without internet or database configuration.
+- Local draft IDs use client-generated prefixes (`camp-...`).
 
 ### 2. API Mode (`EXPO_PUBLIC_USE_API=true`)
-- Uses Axios to communicate with the Express + Neon PostgreSQL backend.
-- **Read Path**: Explore and Campaign Detail query live PostgreSQL tables with server-side sorting (`newest`, `most_funded`, `ending_soon`, `featured`), text search, and category filtering.
-- **Write Path**: 5-step campaign creation creates a server draft (`POST /campaigns`), persists step updates (`PATCH /basics`, `/story`, `/visuals`, `/reach`), and submits the campaign (`POST /submit`) with server-side completeness validation.
-- **Offline Resiliency**: Device AsyncStorage drafts remain intact as an offline cache. If a network call fails, the draft is still saved on the device with a user-friendly sync notification.
+- Connects directly to the Express + Neon PostgreSQL backend.
+- **Server Draft Identity**: When a new campaign draft is initialized, `POST /campaigns` creates a row in PostgreSQL and assigns a **permanent server UUID**. That identical UUID persists through all 5 creation steps (`/basics`, `/story`, `/visuals`, `/reach`, `/submit`) and is mirrored directly into the local Creator Dashboard upon submission.
+- **No Duplicate Identities**: The same UUID is used across both client and server; no secondary local ID is generated for API drafts.
+- **Step Navigation Sync**: The mobile client awaits server persistence on step continue buttons before advancing, eliminating race conditions.
+- **Pre-Submit Sync Flush**: Before `POST /submit` runs, `syncFullDraftToServer()` flushes all latest steps to the server, ensuring Neon has 100% complete data even if earlier background requests experienced transient issues.
+- **No Silent Local Fallback**: In API mode, if the server is unreachable or submission fails, the app preserves your local draft, marks `syncStatus = 'ERROR'`, and displays a clear retry prompt. It **never** silently converts an API submission into a local-only campaign.
+
+### 3. Strict API Mode (`EXPO_PUBLIC_STRICT_API=true`)
+- When enabled alongside `EXPO_PUBLIC_USE_API=true`, read endpoints (Explore, Campaign Detail) will **never** silently fall back to mock data if a network or database error occurs.
+- Surfaces real backend errors and status codes directly, enabling engineers to debug database connection issues, schema mismatches, and network connectivity without false mock successes.
+
+---
+
+## 🔄 Campaign Draft Model & Sync Lifecycle
+
+### 1. New Campaign vs. Revision
+Previous implementations conflated `Boolean(draft.id)` with "this is a revision". In our hardened architecture:
+- **`draft.id` represents identity, NOT revision mode.**
+- A brand-new API-backed draft possesses a server UUID from Step 1 while maintaining `draft.mode = 'NEW'`.
+- `draft.mode = 'REVISION'` is set **only** when loading an existing campaign that is in `CHANGES_REQUESTED` status via `loadCampaignIntoDraft()`.
+- The draft card displays **"Active Draft"** for new campaigns (even with a server UUID) and **"Revision in Progress"** only for genuine revisions.
+
+### 2. Explicit Synchronization States (`CampaignSyncStatus`)
+Each draft tracks its network synchronization status in real-time:
+- **`LOCAL_ONLY`**: Draft exists only on the local device.
+- **`PENDING`**: Synchronization request with backend is actively in progress.
+- **`SYNCED`**: Latest persisted step data has successfully reached PostgreSQL.
+- **`ERROR`**: Local draft is completely safe, but the latest backend synchronization failed. Displays a compact `[Retry]` action in the step indicator.
+
+```
+NEW CAMPAIGN:
+Mobile Draft (mode: NEW, syncStatus: LOCAL_ONLY)
+    ↓
+POST /campaigns
+    ↓
+Server UUID assigned (mode: NEW, syncStatus: SYNCED)
+    ↓
+Awaited Step PATCH Calls (/basics, /story, /visuals, /reach)
+    ↓
+Pre-Submit Sync Flush (ensures all 4 steps current on server)
+    ↓
+POST /submit
+    ↓
+PostgreSQL status: SUBMITTED_FOR_REVIEW
+    ↓
+Same server UUID mirrored into Creator Dashboard (No duplicate ID!)
+```
+
+```
+REVISION CAMPAIGN:
+Existing Campaign (status: CHANGES_REQUESTED)
+    ↓
+loadCampaignIntoDraft(campaign) (mode: REVISION, id: existing_uuid)
+    ↓
+Edit story/sources/targeting
+    ↓
+PATCH /campaigns/:id/... (Updates existing row)
+    ↓
+POST /campaigns/:id/submit
+    ↓
+Same DB row returns to SUBMITTED_FOR_REVIEW (No duplicate row!)
+```
+
+---
+
+## 🖼️ Image Persistence Boundary
+
+- **Remote URLs**: Valid `http://` and `https://` URLs (e.g. Unsplash presets, verified CDN assets) are persisted to Neon PostgreSQL.
+- **Device-Local URIs**: Local asset paths from the image picker (`file://`, `content://`, `ph://`, `blob://`) remain strictly stored in local device draft state and are sanitized before sending to the backend (`sanitizeRemoteImageUrl()`). This prevents transient device-local file paths from corrupting database columns.
+- Dedicated cloud upload storage (e.g., S3 / Cloudflare R2) will be introduced in a future phase.
+
+---
+
+## 💰 Monetary Values Note
+
+- Current campaign monetary values (`goal`, `raised`) are stored in whole currency units (e.g. USD dollars).
+- **TODO before real payment & banking integration**: A migration will transition financial columns to minor currency units (e.g. cents).
 
 ---
 
@@ -57,7 +131,9 @@ cp .env.example .env
 Device-specific API URLs:
 - **iOS Simulator**: `EXPO_PUBLIC_API_URL=http://localhost:5001/api/v1`
 - **Android Emulator**: `EXPO_PUBLIC_API_URL=http://10.0.2.2:5001/api/v1`
-- **Physical Device**: `EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:5001/api/v1`
+- **Physical Device**: `EXPO_PUBLIC_API_URL=http://<MACHINE_LAN_IP>:5001/api/v1` (e.g. `http://192.168.1.100:5001/api/v1`)
+- **API Mode**: `EXPO_PUBLIC_USE_API=true`
+- **Strict Mode (Optional)**: `EXPO_PUBLIC_STRICT_API=true`
 
 ### 3. Backend Setup & Seed
 ```bash
@@ -73,40 +149,54 @@ In the root directory:
 ```bash
 bun expo start
 ```
-
 Press `i` for iOS Simulator, `a` for Android Emulator, or scan the QR code with Expo Go.
+
+---
+
+## 🧪 Automated Testing & Verification
+
+Run the end-to-end sync hardening test suite against your live Neon PostgreSQL database:
+```bash
+cd server
+bun run test-campaign-sync.ts
+```
+
+This verifies:
+1. Process health & Neon database readiness.
+2. UUID validation returning `400 INVALID_CAMPAIGN_ID`.
+3. 5-step campaign creation using **ONE server UUID**.
+4. Database completeness validation (optional cover image, sources >= 1, reach >= 1, $100 min goal).
+5. Neon database inspection confirming **exactly ONE row** per campaign.
+6. True revision workflow with zero duplicate rows.
+7. Lifecycle state enforcement (modifications forbidden once in `FUNDING` status).
+8. Real SQL `ending_soon` sort query execution.
 
 ---
 
 ## 📋 Available Commands (Bun Only)
 
 ```bash
-bun expo start              # Start Metro bundler
-bunx tsc --noEmit           # Root TypeScript check
-cd server && bun run typecheck # Server TypeScript check
-bun run db:migrate          # Run Drizzle migrations
-bun run db:seed             # Populate idempotent demo data
-bun run server              # Start backend dev server
+bun expo start                  # Start Metro bundler
+bunx tsc --noEmit               # Mobile TypeScript check
+cd server && bun run typecheck  # Server TypeScript check
+bun run db:migrate              # Run Drizzle migrations
+bun run db:studio               # Launch Drizzle Studio (https://local.drizzle.studio)
+bun run db:seed                 # Populate idempotent demo data
+bun run server                  # Start backend dev server
+cd server && bun run test-campaign-sync.ts # Run end-to-end sync verification
 ```
 
 ---
 
-## 🌐 Backend API Summary
+## 🌐 Backend API Endpoints
 
 - `GET  /api/v1/health` - Process health check
 - `GET  /api/v1/ready` - Database connectivity probe (`SELECT 1`)
 - `GET  /api/v1/campaigns` - List public campaigns (with `search`, `sort`, `category`, pagination)
-- `GET  /api/v1/campaigns/:id` - Full campaign detail (including editorial story, sources, and targeting)
-- `POST /api/v1/campaigns` - Create new campaign draft (`status: DRAFT`)
+- `GET  /api/v1/campaigns/:id` - Full campaign detail (UUID validated, returns `INVALID_CAMPAIGN_ID` on malformed IDs)
+- `POST /api/v1/campaigns` - Create initial campaign draft (`status: DRAFT`, returns server UUID)
 - `PATCH /api/v1/campaigns/:id/basics` - Step 1: Basics
 - `PATCH /api/v1/campaigns/:id/story` - Step 2: Narrative & sources (atomic transaction)
 - `PATCH /api/v1/campaigns/:id/visuals` - Step 3: Social ad creative (upsert)
 - `PATCH /api/v1/campaigns/:id/reach` - Step 4: Audience targeting (upsert) & duration sync
-- `POST /api/v1/campaigns/:id/submit` - Step 5: Complete campaign validation & transition to `SUBMITTED_FOR_REVIEW`
-
----
-
-## 🔒 Security & Scope Boundaries
-
-- **Demo Identity**: Current write endpoints use a controlled demo creator identifier until JWT authentication is implemented in subsequent phases.
-- **Contributions**: Contributions and payments are simulated on the client in this phase to prevent mock contributions from mutating live campaign rows without dedicated payment verification.
+- `POST /api/v1/campaigns/:id/submit` - Step 5: Completeness validation & transition to `SUBMITTED_FOR_REVIEW`

@@ -22,7 +22,9 @@ import {
   BadRequestError,
   DatabaseUnavailableError,
   IncompleteCampaignError,
+  InvalidCampaignStatusError,
 } from '../../utils/errors';
+import { canEditCampaign, canSubmitCampaign } from './campaign.lifecycle';
 
 // Seed fallback data for when DATABASE_URL is completely unset locally
 const FALLBACK_PUBLIC_CAMPAIGNS: CampaignDetailDTO[] = [
@@ -275,9 +277,11 @@ export const CampaignRepository = {
         case 'most_funded':
           orderByClause = [desc(schema.campaigns.amountRaised)];
           break;
-        case 'ending_soon':
-          orderByClause = [asc(schema.campaigns.durationDays)];
+        case 'ending_soon': {
+          const endsAtSql = sql`COALESCE(${schema.campaigns.fundingStartedAt}, ${schema.campaigns.createdAt}) + (${schema.campaigns.durationDays} || ' days')::interval`;
+          orderByClause = [asc(endsAtSql)];
           break;
+        }
         case 'featured':
         default:
           orderByClause = [desc(schema.campaigns.featured), desc(schema.campaigns.amountRaised)];
@@ -573,8 +577,8 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
-      if (existing.status !== 'DRAFT' && existing.status !== 'CHANGES_REQUESTED') {
-        throw new BadRequestError(`Cannot edit campaign in "${existing.status}" status.`);
+      if (!canEditCampaign(existing.status as any)) {
+        throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
       const [updated] = await db
@@ -584,7 +588,8 @@ export const CampaignRepository = {
           category: input.category,
           creatorDisplayName: input.creatorName,
           summary: input.summary,
-          coverImageUrl: input.coverImage || existing.coverImageUrl,
+          coverImageUrl:
+            input.coverImage !== undefined ? input.coverImage : existing.coverImageUrl,
           updatedAt: new Date(),
         })
         .where(eq(schema.campaigns.id, id as any))
@@ -611,8 +616,8 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
-      if (existing.status !== 'DRAFT' && existing.status !== 'CHANGES_REQUESTED') {
-        throw new BadRequestError(`Cannot edit campaign in "${existing.status}" status.`);
+      if (!canEditCampaign(existing.status as any)) {
+        throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
       await db.transaction(async (tx) => {
@@ -668,12 +673,12 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
-      if (existing.status !== 'DRAFT' && existing.status !== 'CHANGES_REQUESTED') {
-        throw new BadRequestError(`Cannot edit campaign in "${existing.status}" status.`);
+      if (!canEditCampaign(existing.status as any)) {
+        throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
       await db.transaction(async (tx) => {
-        if (input.coverImage) {
+        if (input.coverImage !== undefined) {
           await tx
             .update(schema.campaigns)
             .set({ coverImageUrl: input.coverImage, updatedAt: new Date() })
@@ -723,8 +728,8 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
-      if (existing.status !== 'DRAFT' && existing.status !== 'CHANGES_REQUESTED') {
-        throw new BadRequestError(`Cannot edit campaign in "${existing.status}" status.`);
+      if (!canEditCampaign(existing.status as any)) {
+        throw new InvalidCampaignStatusError(existing.status, 'edit');
       }
 
       await db.transaction(async (tx) => {
@@ -780,25 +785,25 @@ export const CampaignRepository = {
       if (!existing) {
         throw new NotFoundError(`Campaign "${id}" not found.`);
       }
-      if (existing.status !== 'DRAFT' && existing.status !== 'CHANGES_REQUESTED') {
-        throw new BadRequestError(`Campaign cannot be submitted from status "${existing.status}".`);
+      if (!canSubmitCampaign(existing.status as any)) {
+        throw new InvalidCampaignStatusError(existing.status, 'submit');
       }
 
       // Step 1 Completeness Check: Basics
       const missingBasics: string[] = [];
-      if (!existing.title || existing.title.trim().length < 3) missingBasics.push('title');
+      if (!existing.title || existing.title.trim().length < 5) missingBasics.push('title');
       if (!existing.category) missingBasics.push('category');
-      if (!existing.creatorDisplayName || existing.creatorDisplayName.trim().length < 2)
+      if (!existing.creatorDisplayName || existing.creatorDisplayName.trim().length < 3)
         missingBasics.push('creatorName');
-      if (!existing.summary || existing.summary.trim().length < 10) missingBasics.push('summary');
-      if (!existing.coverImageUrl) missingBasics.push('coverImage');
+      if (!existing.summary || existing.summary.trim().length < 20) missingBasics.push('summary');
+      // Phase 15: Cover Image is OPTIONAL. Not required for submit completeness.
       if (missingBasics.length > 0) {
         throw new IncompleteCampaignError('BASICS', missingBasics);
       }
 
       // Step 2 Completeness Check: Story & Sources
       const missingStory: string[] = [];
-      if (!existing.storyContent || existing.storyContent.trim().length < 20)
+      if (!existing.storyContent || existing.storyContent.trim().length < 100)
         missingStory.push('storyContent');
 
       const sources = await db
@@ -822,9 +827,9 @@ export const CampaignRepository = {
 
       const creative = creativeRows[0];
       const missingVisuals: string[] = [];
-      if (!creative?.headline) missingVisuals.push('adHeadline');
-      if (!creative?.description) missingVisuals.push('adDescription');
-      if (!creative?.cta) missingVisuals.push('adCTA');
+      if (!creative?.headline || creative.headline.trim().length < 5) missingVisuals.push('adHeadline');
+      if (!creative?.description || creative.description.trim().length < 10) missingVisuals.push('adDescription');
+      if (!creative?.cta || creative.cta.trim().length < 2) missingVisuals.push('adCTA');
       if (missingVisuals.length > 0) {
         throw new IncompleteCampaignError('VISUALS', missingVisuals);
       }
@@ -841,8 +846,14 @@ export const CampaignRepository = {
       if (!targeting || !Array.isArray(targeting.locations) || targeting.locations.length === 0) {
         missingReach.push('locations');
       }
+      if (!targeting || !Array.isArray(targeting.interests) || targeting.interests.length === 0) {
+        missingReach.push('interests');
+      }
       if (!targeting || !Array.isArray(targeting.channels) || targeting.channels.length === 0) {
         missingReach.push('channels');
+      }
+      if (!targeting?.audienceDescription || targeting.audienceDescription.trim().length < 10) {
+        missingReach.push('audienceDescription');
       }
       if (missingReach.length > 0) {
         throw new IncompleteCampaignError('REACH', missingReach);

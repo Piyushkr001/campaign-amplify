@@ -46,6 +46,7 @@ export default function CreateSubmitScreen() {
     updateField,
     updateFields,
     setCurrentStep,
+    setSyncStatus,
     saveAsDraft,
     resetDraft,
     lastSavedAt,
@@ -53,7 +54,7 @@ export default function CreateSubmitScreen() {
   const { addFromDraft, updateFromDraft, transitionCampaign, getCampaignById } =
     useMyCampaignsStore();
 
-  const isRevision = Boolean(draft.id);
+  const isRevision = draft.mode === 'REVISION';
   const existingCampaign = draft.id ? getCampaignById(draft.id) : undefined;
 
   const [fundingGoal, setFundingGoal] = useState<number>(draft.fundingGoal || 2500);
@@ -100,11 +101,26 @@ export default function CreateSubmitScreen() {
     }
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     updateFields({ fundingGoal });
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    setSaveBannerText('Draft saved with review preferences');
+
+    if (Config.useApi) {
+      try {
+        setSyncStatus('PENDING');
+        const serverId = await CampaignService.syncFullDraftToServer({ ...draft, fundingGoal });
+        updateFields({ id: serverId });
+        setSyncStatus('SYNCED');
+        setSaveBannerText('Draft synced to server with review preferences');
+      } catch (err: any) {
+        console.warn('[CreateSubmit] Sync failed:', err);
+        setSyncStatus('ERROR', err?.message || 'Server sync failed');
+        setSaveBannerText('Saved locally on device (cloud sync pending)');
+      }
+    } else {
+      setSaveBannerText('Draft saved with review preferences');
+    }
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
@@ -208,20 +224,29 @@ export default function CreateSubmitScreen() {
     setIsSubmitting(true);
 
     try {
-      if (Config.useApi && draft.id) {
-        // Backend API authoritative submission
+      if (Config.useApi) {
+        // Backend API authoritative submission: NEVER silently fall back to local!
+        setSyncStatus('PENDING');
         try {
-          const result = await CampaignService.submitCampaign(draft.id, { fundingGoal });
+          // Phase 11: Ensure server has latest Basics, Story, Visuals, and Reach
+          const serverId = await CampaignService.syncFullDraftToServer({
+            ...draft,
+            fundingGoal,
+          });
+          updateFields({ id: serverId });
 
-          // Also mirror to local cache so Creator Dashboard & Activity update immediately
+          const result = await CampaignService.submitCampaign(serverId, { fundingGoal });
+          setSyncStatus('SYNCED');
+
+          // Phase 6 & Phase 28: Mirror submitted campaign to local cache using SAME server UUID
           if (isRevision) {
-            updateFromDraft(draft.id, { ...draft, fundingGoal });
-            transitionCampaign(draft.id, 'SUBMITTED_FOR_REVIEW', {
+            updateFromDraft(serverId, { ...draft, fundingGoal, id: serverId });
+            transitionCampaign(serverId, 'SUBMITTED_FOR_REVIEW', {
               actor: 'CREATOR',
               note: 'Campaign revisions resubmitted by creator for editorial review.',
             });
           } else {
-            addFromDraft({ ...draft, fundingGoal, id: draft.id });
+            addFromDraft({ ...draft, fundingGoal, id: serverId });
           }
 
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -230,7 +255,7 @@ export default function CreateSubmitScreen() {
           router.replace({
             pathname: '/create-campaign/success',
             params: {
-              id: result.id || draft.id,
+              id: result.id || serverId,
               title: draft.title,
               resubmitted: isRevision ? 'true' : undefined,
             },
@@ -238,13 +263,22 @@ export default function CreateSubmitScreen() {
           return;
         } catch (apiErr: any) {
           setIsSubmitting(false);
+          setSyncStatus('ERROR', apiErr?.message || 'Server sync or submission failed');
           const formatted = formatApiError(apiErr);
-          Alert.alert('Submission Incomplete', formatted.message);
+          Alert.alert(
+            'Server Submission Required',
+            `${formatted.message}\n\nYour work is safely preserved on this device. Please check your connection and retry.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Retry Submit', onPress: () => handleSubmit() },
+            ]
+          );
           return;
         }
       }
 
-      if (draft.id) {
+      // Local prototype mode ONLY (Config.useApi === false)
+      if (isRevision && draft.id) {
         // Local prototype revision flow
         const updatedCampaign = updateFromDraft(draft.id, {
           ...draft,
@@ -314,7 +348,9 @@ export default function CreateSubmitScreen() {
       <CampaignStepIndicator
         currentStep={5}
         lastSavedAt={lastSavedAt}
+        syncStatus={draft.syncStatus}
         onSaveDraft={handleSaveDraft}
+        onRetrySync={handleSaveDraft}
       />
 
       {/* Contextual Revision Feedback Banner */}

@@ -32,7 +32,7 @@ interface DraftCampaignCardProps {
 
 export function DraftCampaignCard({ draft, onDiscard }: DraftCampaignCardProps) {
   const router = useRouter();
-  const isRevision = Boolean(draft.id);
+  const isRevision = draft.mode === 'REVISION';
   const step = draft.currentStep || 1;
   const stepProgress = Math.round((step / 5) * 100);
 

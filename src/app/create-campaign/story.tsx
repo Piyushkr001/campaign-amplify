@@ -32,6 +32,7 @@ export default function CreateStoryScreen() {
     updateField,
     updateFields,
     setCurrentStep,
+    setSyncStatus,
     addSource,
     updateSource,
     removeSource,
@@ -155,9 +156,16 @@ export default function CreateStoryScreen() {
     saveAsDraft();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
-    if (Config.useApi && draft.id) {
+    if (Config.useApi) {
       try {
-        await CampaignService.saveStory(draft.id, {
+        setSyncStatus('PENDING');
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveStory(serverId, {
           storyHeadline,
           storyIntro,
           storyContent,
@@ -166,14 +174,17 @@ export default function CreateStoryScreen() {
           storyImageCredit,
           suggestedAction,
           sources: draft.sources.map((s) => ({
+            id: s.id,
             title: s.title,
             url: s.url,
             publisher: s.publisher,
           })),
         });
+        setSyncStatus('SYNCED');
         setSaveBannerText('Story saved to cloud & device');
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[CreateStory] Cloud sync failed:', err);
+        setSyncStatus('ERROR', err?.message || 'Server sync failed');
         setSaveBannerText('Saved on this device (offline mode)');
       }
     } else {
@@ -182,7 +193,7 @@ export default function CreateStoryScreen() {
     setTimeout(() => setSaveBannerText(null), 3000);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const result = CampaignStorySchema.safeParse({
       storyHeadline,
       storyIntro,
@@ -218,21 +229,35 @@ export default function CreateStoryScreen() {
     });
     setCurrentStep(3);
 
-    if (Config.useApi && draft.id) {
-      CampaignService.saveStory(draft.id, {
-        storyHeadline,
-        storyIntro,
-        storyContent,
-        storyImage,
-        storyImageCaption,
-        storyImageCredit,
-        suggestedAction,
-        sources: draft.sources.map((s) => ({
-          title: s.title,
-          url: s.url,
-          publisher: s.publisher,
-        })),
-      }).catch((err) => console.warn('[CreateStory] Background sync warning:', err));
+    if (Config.useApi) {
+      setSyncStatus('PENDING');
+      try {
+        let serverId = draft.id;
+        if (!serverId) {
+          const newDraft = await CampaignService.createDraft(draft.title || 'Untitled Draft');
+          serverId = newDraft.id;
+          updateFields({ id: serverId, mode: 'NEW' });
+        }
+        await CampaignService.saveStory(serverId, {
+          storyHeadline,
+          storyIntro,
+          storyContent,
+          storyImage,
+          storyImageCaption,
+          storyImageCredit,
+          suggestedAction,
+          sources: draft.sources.map((s) => ({
+            id: s.id,
+            title: s.title,
+            url: s.url,
+            publisher: s.publisher,
+          })),
+        });
+        setSyncStatus('SYNCED');
+      } catch (err: any) {
+        console.warn('[CreateStory] Server sync failed during step navigation:', err);
+        setSyncStatus('ERROR', err?.message || 'Failed to sync Step 2 to server');
+      }
     }
 
     router.push('/create-campaign/visuals');
@@ -244,7 +269,9 @@ export default function CreateStoryScreen() {
       <CampaignStepIndicator
         currentStep={2}
         lastSavedAt={lastSavedAt}
+        syncStatus={draft.syncStatus}
         onSaveDraft={handleSaveDraft}
+        onRetrySync={handleSaveDraft}
       />
 
       {/* Header */}

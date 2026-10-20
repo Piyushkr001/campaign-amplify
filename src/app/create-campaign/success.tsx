@@ -81,6 +81,15 @@ export default function CreateSuccessScreen() {
               </Pressable>
             </View>
           </View>
+        ) : params.id ? (
+          <View style={styles.campaignSnapshotCard}>
+            <View style={styles.snapshotBody}>
+              <Text style={styles.snapshotTitle}>{params.title || 'Submitted Campaign'}</Text>
+              <Text style={styles.snapshotMeta}>
+                Reference ID: {params.id} • Status: SUBMITTED_FOR_REVIEW
+              </Text>
+            </View>
+          </View>
         ) : null}
 
         {/* Review Timeline Card */}

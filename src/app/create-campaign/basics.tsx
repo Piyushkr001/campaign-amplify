@@ -38,6 +38,7 @@ export default function CreateBasicsScreen() {
     updateField,
     updateFields,
     setCurrentStep,
+    setSyncStatus,
     saveAsDraft,
     lastSavedAt,
     hasHydrated,
@@ -126,11 +127,12 @@ export default function CreateBasicsScreen() {
 
     if (Config.useApi) {
       try {
+        setSyncStatus('PENDING');
         let serverId = draft.id;
         if (!serverId) {
           const newDraft = await CampaignService.createDraft(title || 'Untitled Draft');
           serverId = newDraft.id;
-          updateField('id', serverId);
+          updateFields({ id: serverId, mode: 'NEW' });
         }
         await CampaignService.saveBasics(serverId, {
           title: title || 'Untitled Draft',
@@ -139,9 +141,11 @@ export default function CreateBasicsScreen() {
           summary: summary || 'Campaign draft in progress.',
           coverImage,
         });
+        setSyncStatus('SYNCED');
         setSaveBannerText('Draft saved to cloud & device');
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[CreateBasics] Cloud sync failed:', err);
+        setSyncStatus('ERROR', err?.message || 'Server sync failed');
         setSaveBannerText('Saved on this device (offline mode)');
       }
     } else {
@@ -183,12 +187,13 @@ export default function CreateBasicsScreen() {
     setCurrentStep(2);
 
     if (Config.useApi) {
+      setSyncStatus('PENDING');
       try {
         let serverId = draft.id;
         if (!serverId) {
           const newDraft = await CampaignService.createDraft(title);
           serverId = newDraft.id;
-          updateField('id', serverId);
+          updateFields({ id: serverId, mode: 'NEW' });
         }
         await CampaignService.saveBasics(serverId, {
           title,
@@ -197,8 +202,10 @@ export default function CreateBasicsScreen() {
           summary,
           coverImage,
         });
-      } catch (err) {
-        console.warn('[CreateBasics] Background server sync warning:', err);
+        setSyncStatus('SYNCED');
+      } catch (err: any) {
+        console.warn('[CreateBasics] Server sync failed during step navigation:', err);
+        setSyncStatus('ERROR', err?.message || 'Failed to sync Step 1 to server');
       }
     }
 
@@ -211,7 +218,9 @@ export default function CreateBasicsScreen() {
       <CampaignStepIndicator
         currentStep={1}
         lastSavedAt={lastSavedAt}
+        syncStatus={draft.syncStatus}
         onSaveDraft={handleSaveDraft}
+        onRetrySync={handleSaveDraft}
       />
 
       {/* Header */}

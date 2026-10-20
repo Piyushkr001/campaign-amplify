@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
+import { CampaignSyncStatus } from '@/types/campaign';
 
 export type StepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -23,16 +24,20 @@ const STEPS: { number: StepNumber; label: string }[] = [
 export interface CampaignStepIndicatorProps {
   currentStep: StepNumber;
   lastSavedAt?: string | null;
+  syncStatus?: CampaignSyncStatus;
   onSaveDraft?: () => void;
+  onRetrySync?: () => void;
 }
 
 export const CampaignStepIndicator: React.FC<CampaignStepIndicatorProps> = ({
   currentStep,
   lastSavedAt,
+  syncStatus = 'LOCAL_ONLY',
   onSaveDraft,
+  onRetrySync,
 }) => {
   const getSaveTimeText = () => {
-    if (!lastSavedAt) return 'Draft auto-saves locally';
+    if (!lastSavedAt) return 'Saved on device';
     try {
       const savedDate = new Date(lastSavedAt);
       const diffSec = Math.floor((Date.now() - savedDate.getTime()) / 1000);
@@ -46,6 +51,51 @@ export const CampaignStepIndicator: React.FC<CampaignStepIndicatorProps> = ({
     }
   };
 
+  const renderSyncBadge = () => {
+    switch (syncStatus) {
+      case 'PENDING':
+        return (
+          <View style={styles.syncBadge}>
+            <View style={[styles.saveDot, styles.dotPending]} />
+            <Text style={styles.saveStatusText}>Syncing...</Text>
+          </View>
+        );
+      case 'SYNCED':
+        return (
+          <View style={styles.syncBadge}>
+            <View style={[styles.saveDot, styles.dotSynced]} />
+            <Text style={styles.saveStatusText}>Synced</Text>
+          </View>
+        );
+      case 'ERROR':
+        return (
+          <View style={styles.syncBadge}>
+            <View style={[styles.saveDot, styles.dotError]} />
+            <Text style={[styles.saveStatusText, styles.textError]}>Sync failed</Text>
+            {onRetrySync && (
+              <Pressable
+                onPress={onRetrySync}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel="Retry syncing to server"
+                style={({ pressed }) => [styles.retryBtn, pressed && styles.btnPressed]}>
+                <Ionicons name="refresh" size={11} color={Palette.error700} />
+                <Text style={styles.retryText}>Retry</Text>
+              </Pressable>
+            )}
+          </View>
+        );
+      case 'LOCAL_ONLY':
+      default:
+        return (
+          <View style={styles.syncBadge}>
+            <View style={[styles.saveDot, styles.dotLocal]} />
+            <Text style={styles.saveStatusText}>{getSaveTimeText()}</Text>
+          </View>
+        );
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Top Status Row: Step counter & Autosave status */}
@@ -56,8 +106,7 @@ export const CampaignStepIndicator: React.FC<CampaignStepIndicatorProps> = ({
         </Text>
 
         <View style={styles.saveStatusWrapper}>
-          <View style={styles.saveDot} />
-          <Text style={styles.saveStatusText}>{getSaveTimeText()}</Text>
+          {renderSyncBadge()}
 
           {onSaveDraft && (
             <Pressable
@@ -137,25 +186,18 @@ export const CampaignStepIndicator: React.FC<CampaignStepIndicatorProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Palette.pureWhite,
-    borderRadius: BorderRadius.card,
-    borderWidth: 1,
-    borderColor: Palette.neutral200,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.md,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   statusRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-    paddingHorizontal: 2,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   stepCounterText: {
     ...Typography.caption,
-    fontSize: 11,
-    color: Palette.neutral500,
+    color: Palette.neutral600,
     fontWeight: '500',
   },
   stepCurrentLabel: {
@@ -165,18 +207,53 @@ const styles = StyleSheet.create({
   saveStatusWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+  },
+  syncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   saveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
+  },
+  dotLocal: {
+    backgroundColor: Palette.neutral400,
+  },
+  dotPending: {
+    backgroundColor: Palette.primary500,
+  },
+  dotSynced: {
     backgroundColor: Palette.success600,
+  },
+  dotError: {
+    backgroundColor: Palette.error600,
   },
   saveStatusText: {
     ...Typography.caption,
-    fontSize: 10,
+    fontSize: 11,
     color: Palette.neutral500,
+  },
+  textError: {
+    color: Palette.error700,
+    fontWeight: '600',
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: Palette.error50,
+    paddingVertical: 1,
+    paddingHorizontal: 5,
+    borderRadius: BorderRadius.pill,
+    marginLeft: 3,
+  },
+  retryText: {
+    ...Typography.caption,
+    fontSize: 10,
+    fontWeight: '700',
+    color: Palette.error700,
   },
   saveDraftBtn: {
     flexDirection: 'row',
@@ -186,7 +263,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     paddingHorizontal: 6,
     borderRadius: BorderRadius.pill,
-    marginLeft: 4,
+    marginLeft: 6,
   },
   saveDraftText: {
     ...Typography.caption,
