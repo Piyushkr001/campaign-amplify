@@ -4,6 +4,7 @@ import { CategoryName } from '@/constants/categories';
 import { Config } from '@/constants/config';
 import { apiClient } from '@/services/api';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { getEffectiveCampaign, isEffectivePublic } from '@/utils/effective-campaign';
 import { sanitizeRemoteImageUrl } from '@/utils/assets';
 import {
@@ -68,14 +69,22 @@ function mapDtoToCampaign(dto: CampaignDetailApiDTO | CampaignListApiDTO): Campa
       url: s.url,
       publisher: s.publisher,
     })),
+    reviewStartedAt: detail.reviewStartedAt,
+    requestedChangesAt: detail.requestedChangesAt,
     approvedAt: detail.approvedAt,
+    fundingStartedAt: detail.fundingStartedAt,
+    fundedAt: detail.fundingStartedAt || (detail as any).fundedAt,
     fundingGoalReachedAt: detail.fundingGoalReachedAt,
     fundingEndedAt: detail.fundingEndedAt,
     distributionPreparationAt: detail.distributionPreparationAt,
     promotionStartedAt: detail.promotionStartedAt,
     completedAt: detail.completedAt,
+    rejectedAt: detail.rejectedAt,
     cancelledAt: detail.cancelledAt,
     failedAt: detail.failedAt,
+    reviewFeedback: detail.reviewFeedback,
+    rejectionReason: detail.rejectionReason,
+    statusHistory: detail.statusHistory as any,
   };
 }
 
@@ -212,9 +221,57 @@ export const CampaignService = {
   },
 
   /**
+   * Fetches all campaigns owned by the current creator.
+   * In API mode, calls GET /me/campaigns.
+   * In local mode, returns campaigns from local store.
+   */
+  getMyCampaigns: async (filters?: {
+    status?: string;
+    category?: string;
+    search?: string;
+  }): Promise<Campaign[]> => {
+    if (Config.useApi) {
+      try {
+        const response = await apiClient.get<{ success: boolean; data: CampaignListApiDTO[] }>(
+          '/me/campaigns',
+          { params: filters }
+        );
+        if (response.data?.success && Array.isArray(response.data?.data)) {
+          return response.data.data.map(mapDtoToCampaign);
+        }
+      } catch (err) {
+        if (Config.strictApi) {
+          throw err;
+        }
+        console.warn('[CampaignService] Failed to fetch /me/campaigns, using local fallback:', err);
+      }
+    }
+
+    // Local mode fallback
+    return useMyCampaignsStore.getState().campaigns.map(getEffectiveCampaign);
+  },
+
+  /**
    * Fetches a campaign by ID for the creator who owns it (accessible regardless of public status).
+   * In API mode, calls GET /me/campaigns/:id.
    */
   getCreatorCampaignById: async (id: string): Promise<Campaign | undefined> => {
+    if (Config.useApi) {
+      try {
+        const response = await apiClient.get<{ success: boolean; data: CampaignDetailApiDTO }>(
+          `/me/campaigns/${id}`
+        );
+        if (response.data?.success && response.data?.data) {
+          return mapDtoToCampaign(response.data.data);
+        }
+      } catch (err) {
+        if (Config.strictApi) {
+          throw err;
+        }
+        console.warn(`[CampaignService] Failed to fetch /me/campaigns/${id}, using local fallback:`, err);
+      }
+    }
+
     const userCampaigns = useMyCampaignsStore.getState().campaigns;
     const foundInUser = userCampaigns.find((c) => c.id === id);
     if (foundInUser) {
@@ -409,6 +466,8 @@ export const CampaignService = {
     if (!serverId) {
       const created = await CampaignService.createDraft(draft.title || 'Untitled Draft');
       serverId = created.id;
+      // Phase 2: Persist server UUID immediately so failure/retry reuses the same backend DRAFT
+      useCampaignDraftStore.getState().setDraftServerId(serverId);
     }
 
     // Step 1: Basics

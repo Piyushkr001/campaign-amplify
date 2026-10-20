@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BACKEND_PUBLIC_STATUSES } from './campaign.types';
+import { VALID_CAMPAIGN_CATEGORIES } from '../../config/campaign-policy';
 
 export const listCampaignsQuerySchema = z
   .object({
@@ -40,7 +41,12 @@ export const updateBasicsSchema = z.object({
     .trim()
     .min(5, 'Campaign title must be at least 5 characters.')
     .max(60, 'Campaign title cannot exceed 60 characters.'),
-  category: z.string().trim().min(1, 'Category is required.'),
+  category: z
+    .string()
+    .trim()
+    .refine((val) => (VALID_CAMPAIGN_CATEGORIES as readonly string[]).includes(val), {
+      message: 'Please select a valid campaign category.',
+    }),
   creatorName: z
     .string()
     .trim()

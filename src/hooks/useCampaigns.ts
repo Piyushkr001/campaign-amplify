@@ -35,13 +35,24 @@ export function useCampaign(id: string) {
 }
 
 /**
- * Hook for creator campaign detail (includes private drafts / under review).
+ * Hook for creator campaign list (Creator Dashboard).
+ */
+export function useCreatorCampaigns(filters?: { status?: string; category?: string; search?: string }) {
+  return useQuery<Campaign[], Error>({
+    queryKey: campaignKeys.creator.list(filters),
+    queryFn: () => CampaignService.getMyCampaigns(filters),
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+/**
+ * Hook for creator campaign detail (includes private drafts / under review / revision feedback).
  */
 export function useCreatorCampaign(id: string) {
   return useQuery<Campaign | undefined, Error>({
-    queryKey: [...campaignKeys.detail(id), 'creator'],
+    queryKey: campaignKeys.creator.detail(id),
     queryFn: () => CampaignService.getCreatorCampaignById(id),
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
     enabled: Boolean(id),
   });
 }

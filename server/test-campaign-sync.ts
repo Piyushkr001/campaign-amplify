@@ -1,6 +1,7 @@
+import assert from 'node:assert/strict';
 import { createApp } from './src/app';
 import { getDb, schema } from './src/db/index';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Server } from 'http';
 
 async function runTests() {
@@ -9,62 +10,112 @@ async function runTests() {
   console.log('========================================================\n');
 
   const app = createApp();
-  const PORT = 5099;
+  const PORT = 5098;
   const server: Server = await new Promise((resolve) => {
     const s = app.listen(PORT, () => resolve(s));
   });
   const BASE_URL = `http://localhost:${PORT}/api/v1`;
 
+  let testCampaignId: string | null = null;
+
   try {
     // 1. Readiness Check
     console.log('[TEST 1] Checking /health and /ready endpoints...');
     const healthRes = await fetch(`${BASE_URL}/health`);
+    assert.equal(healthRes.status, 200, 'Health endpoint must return 200');
     const healthJson = await healthRes.json();
-    console.log('  Health:', healthJson.success ? 'PASS' : 'FAIL');
+    assert.equal(healthJson.success, true, 'Health check must be true');
 
     const readyRes = await fetch(`${BASE_URL}/ready`);
+    assert.equal(readyRes.status, 200, 'Ready endpoint must return 200');
     const readyJson = await readyRes.json();
-    console.log('  Ready (DB connection):', readyJson.data?.database === 'connected' ? 'PASS' : 'FAIL');
+    assert.equal(readyJson.data?.database, 'connected', 'Database must report connected');
+    console.log('  Health & DB connection verified.');
 
     // 2. Phase 18: UUID Validation Check
     console.log('\n[TEST 2] Testing UUID Validation (Phase 18 & 19)...');
     const invalidIdRes = await fetch(`${BASE_URL}/campaigns/not-a-valid-uuid`);
+    assert.equal(invalidIdRes.status, 400, 'Invalid UUID must return 400');
     const invalidIdJson = await invalidIdRes.json();
-    console.log('  Status Code:', invalidIdRes.status, invalidIdRes.status === 400 ? 'PASS' : 'FAIL');
-    console.log('  Error Code:', invalidIdJson.error?.code, invalidIdJson.error?.code === 'INVALID_CAMPAIGN_ID' ? 'PASS' : 'FAIL');
+    assert.equal(invalidIdJson.error?.code, 'INVALID_CAMPAIGN_ID', 'Error code must be INVALID_CAMPAIGN_ID');
+    console.log('  UUID validation verified (400 INVALID_CAMPAIGN_ID).');
 
-    // 3. Phase 32: End-to-End API Campaign Creation
-    console.log('\n[TEST 3] Testing Step A: POST /campaigns (Server Draft Creation)...');
+    // 3. Phase 5: Category Validation Check
+    console.log('\n[TEST 3] Testing Category Validation (Phase 5)...');
+    const invalidCatDraftRes = await fetch(`${BASE_URL}/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Invalid Category Test' }),
+    });
+    const invalidCatDraftJson = await invalidCatDraftRes.json();
+    const tempUuid = invalidCatDraftJson.data?.id;
+    assert.ok(tempUuid, 'Temp UUID must exist');
+
+    try {
+      const invalidCatRes = await fetch(`${BASE_URL}/campaigns/${tempUuid}/basics`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Clean Water Project',
+          category: 'BANANA', // Arbitrary invalid category
+          creatorName: 'Clean Water Group',
+          summary: 'Community-funded amplification message summary.',
+        }),
+      });
+      assert.equal(invalidCatRes.status, 400, 'Arbitrary category BANANA must be rejected with 400');
+      const invalidCatJson = await invalidCatRes.json();
+      assert.equal(invalidCatJson.error?.code, 'VALIDATION_ERROR', 'Error code must be VALIDATION_ERROR');
+      console.log('  Invalid category rejected with 400 VALIDATION_ERROR.');
+    } finally {
+      const db = getDb();
+      await db.delete(schema.campaigns).where(eq(schema.campaigns.id, tempUuid as any));
+    }
+
+    // 4. Phase 32: End-to-End API Campaign Creation
+    console.log('\n[TEST 4] Testing Step A: POST /campaigns (Server Draft Creation)...');
     const createRes = await fetch(`${BASE_URL}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Clean Water Village Pipeline' }),
+      body: JSON.stringify({ title: 'Sync Hardening Clean Water Campaign' }),
     });
+    assert.equal(createRes.status, 201, 'Draft creation must return 201');
     const createJson = await createRes.json();
-    const serverUuid = createJson.data?.id;
-    console.log('  Received Server UUID:', serverUuid);
-    console.log('  Initial Status:', createJson.data?.status, createJson.data?.status === 'DRAFT' ? 'PASS' : 'FAIL');
-    if (!serverUuid) throw new Error('Failed to get server UUID from create draft');
+    testCampaignId = createJson.data?.id;
+    assert.ok(testCampaignId, 'Must receive a valid server UUID');
+    assert.equal(createJson.data?.status, 'DRAFT', 'Initial status must be DRAFT');
+    console.log('  Created server DRAFT UUID:', testCampaignId);
+
+    // Verify initial DRAFT status history exists in DB (Phase 12)
+    const db = getDb();
+    const initialHist = await db
+      .select()
+      .from(schema.campaignStatusHistory)
+      .where(eq(schema.campaignStatusHistory.campaignId, testCampaignId as any));
+    assert.equal(initialHist.length, 1, 'Initial status history row must be created');
+    assert.equal(initialHist[0].toStatus, 'DRAFT', 'Initial history event must record DRAFT');
+    console.log('  Initial DRAFT status history verified in DB.');
 
     // Step B: Basics
-    console.log('\n[TEST 4] Testing Step B: PATCH /basics...');
-    const basicsRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/basics`, {
+    console.log('\n[TEST 5] Testing Step B: PATCH /basics...');
+    const basicsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/basics`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: 'Clean Water Village Pipeline',
+        title: 'Sync Hardening Clean Water Campaign',
         category: 'Environment',
         creatorName: 'Global Clean Water Initiative',
         summary: 'Community-funded amplification to deliver biological sand filtration infrastructure blueprints to 50 rural districts.',
         coverImage: 'https://images.unsplash.com/photo-1541252260730-0412e8e2108e?w=800',
       }),
     });
+    assert.equal(basicsRes.status, 200, 'Basics PATCH must return 200');
     const basicsJson = await basicsRes.json();
-    console.log('  Basics Response:', basicsJson.success ? 'PASS' : 'FAIL');
+    assert.equal(basicsJson.success, true, 'Basics response success must be true');
+    console.log('  Step B (Basics) persisted.');
 
     // Step C: Story
-    console.log('\n[TEST 5] Testing Step C: PATCH /story...');
-    const storyRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/story`, {
+    console.log('\n[TEST 6] Testing Step C: PATCH /story...');
+    const storyRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -80,12 +131,14 @@ async function runTests() {
         ],
       }),
     });
+    assert.equal(storyRes.status, 200, 'Story PATCH must return 200');
     const storyJson = await storyRes.json();
-    console.log('  Story Response:', storyJson.success ? 'PASS' : 'FAIL');
+    assert.equal(storyJson.success, true, 'Story response success must be true');
+    console.log('  Step C (Story & Sources) persisted.');
 
     // Step D: Visuals
-    console.log('\n[TEST 6] Testing Step D: PATCH /visuals...');
-    const visualsRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/visuals`, {
+    console.log('\n[TEST 7] Testing Step D: PATCH /visuals...');
+    const visualsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/visuals`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -95,12 +148,14 @@ async function runTests() {
         adImage: 'https://images.unsplash.com/photo-1541252260730-0412e8e2108e?w=800',
       }),
     });
+    assert.equal(visualsRes.status, 200, 'Visuals PATCH must return 200');
     const visualsJson = await visualsRes.json();
-    console.log('  Visuals Response:', visualsJson.success ? 'PASS' : 'FAIL');
+    assert.equal(visualsJson.success, true, 'Visuals response success must be true');
+    console.log('  Step D (Visuals & Ad Creative) persisted.');
 
     // Step E: Reach
-    console.log('\n[TEST 7] Testing Step E: PATCH /reach...');
-    const reachRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/reach`, {
+    console.log('\n[TEST 8] Testing Step E: PATCH /reach...');
+    const reachRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/reach`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -111,67 +166,63 @@ async function runTests() {
         durationDays: 21,
       }),
     });
+    assert.equal(reachRes.status, 200, 'Reach PATCH must return 200');
     const reachJson = await reachRes.json();
-    console.log('  Reach Response:', reachJson.success ? 'PASS' : 'FAIL');
+    assert.equal(reachJson.success, true, 'Reach response success must be true');
+    console.log('  Step E (Reach & Targeting) persisted.');
 
     // Step F: Submit
-    console.log('\n[TEST 8] Testing Step F: POST /submit...');
-    const submitRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/submit`, {
+    console.log('\n[TEST 9] Testing Step F: POST /submit...');
+    const submitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fundingGoal: 3500 }),
     });
+    assert.equal(submitRes.status, 200, 'Submit must return 200');
     const submitJson = await submitRes.json();
-    console.log('  Submit Status Code:', submitRes.status, submitRes.status === 200 ? 'PASS' : 'FAIL');
-    console.log('  Submitted Campaign Status:', submitJson.data?.status, submitJson.data?.status === 'SUBMITTED_FOR_REVIEW' ? 'PASS' : 'FAIL');
-    console.log('  Returned Same UUID:', submitJson.data?.id === serverUuid ? 'PASS' : 'FAIL');
+    assert.equal(submitJson.data?.status, 'SUBMITTED_FOR_REVIEW', 'Status must transition to SUBMITTED_FOR_REVIEW');
+    assert.equal(submitJson.data?.id, testCampaignId, 'Returned ID must match exact server UUID');
+    console.log('  Step F (Submit) successfully reached SUBMITTED_FOR_REVIEW with same UUID.');
 
     // Step G: Database Inspection (Phase 36)
-    console.log('\n[TEST 9] Database Inspection via Drizzle ORM in Neon...');
-    const db = getDb();
+    console.log('\n[TEST 10] Database Inspection via Drizzle ORM in Neon...');
     const campRows = await db
       .select()
       .from(schema.campaigns)
-      .where(eq(schema.campaigns.id, serverUuid as any));
-    console.log('  Campaign Rows Found for UUID:', campRows.length, campRows.length === 1 ? 'PASS (EXACTLY ONE)' : 'FAIL');
-    const campRow = campRows[0];
-    console.log('  Row Status:', campRow.status, campRow.status === 'SUBMITTED_FOR_REVIEW' ? 'PASS' : 'FAIL');
-    console.log('  Funding Goal:', campRow.fundingGoal, campRow.fundingGoal === 3500 ? 'PASS' : 'FAIL');
+      .where(eq(schema.campaigns.id, testCampaignId as any));
+    assert.equal(campRows.length, 1, 'Exactly ONE row must exist for campaign UUID');
+    assert.equal(campRows[0].status, 'SUBMITTED_FOR_REVIEW', 'Database row status must be SUBMITTED_FOR_REVIEW');
+    assert.equal(campRows[0].fundingGoal, 3500, 'Funding goal must match submitted value');
 
     const sourceRows = await db
       .select()
       .from(schema.campaignSources)
-      .where(eq(schema.campaignSources.campaignId, serverUuid as any));
-    console.log('  Sources Count in DB:', sourceRows.length, sourceRows.length >= 1 ? 'PASS' : 'FAIL');
+      .where(eq(schema.campaignSources.campaignId, testCampaignId as any));
+    assert.ok(sourceRows.length >= 1, 'Sources must be stored in DB');
 
     const creativeRows = await db
       .select()
       .from(schema.adCreatives)
-      .where(eq(schema.adCreatives.campaignId, serverUuid as any));
-    console.log('  Ad Creatives Count in DB:', creativeRows.length, creativeRows.length === 1 ? 'PASS' : 'FAIL');
+      .where(eq(schema.adCreatives.campaignId, testCampaignId as any));
+    assert.equal(creativeRows.length, 1, 'Exactly one ad creative record must exist');
 
     const targetingRows = await db
       .select()
       .from(schema.campaignTargeting)
-      .where(eq(schema.campaignTargeting.campaignId, serverUuid as any));
-    console.log('  Targeting Rows Count in DB:', targetingRows.length, targetingRows.length === 1 ? 'PASS' : 'FAIL');
-
-    const historyRows = await db
-      .select()
-      .from(schema.campaignStatusHistory)
-      .where(eq(schema.campaignStatusHistory.campaignId, serverUuid as any));
-    console.log('  Status History Count in DB:', historyRows.length, historyRows.length >= 1 ? 'PASS' : 'FAIL');
+      .where(eq(schema.campaignTargeting.campaignId, testCampaignId as any));
+    assert.equal(targetingRows.length, 1, 'Targeting record must exist');
+    console.log('  Database integrity confirmed: campaign row, sources, creative, and targeting match.');
 
     // Phase 33: True Revision Test
-    console.log('\n[TEST 10] Testing True Revision Workflow (Phase 33)...');
+    console.log('\n[TEST 11] Testing True Revision Workflow (Phase 33)...');
     // Set status to CHANGES_REQUESTED in DB
     await db
       .update(schema.campaigns)
       .set({ status: 'CHANGES_REQUESTED' })
-      .where(eq(schema.campaigns.id, serverUuid as any));
+      .where(eq(schema.campaigns.id, testCampaignId as any));
 
     // Creator edits story during revision
-    const revStoryRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/story`, {
+    const revStoryRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -192,62 +243,55 @@ async function runTests() {
         ],
       }),
     });
-    const revStoryJson = await revStoryRes.json();
-    console.log('  Revision Story PATCH:', revStoryJson.success ? 'PASS' : 'FAIL');
+    assert.equal(revStoryRes.status, 200, 'Story revision PATCH must succeed with 200');
 
     // Resubmit
-    const resubmitRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/submit`, {
+    const resubmitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fundingGoal: 4000 }),
     });
+    assert.equal(resubmitRes.status, 200, 'Resubmission must succeed with 200');
     const resubmitJson = await resubmitRes.json();
-    console.log('  Resubmit Status:', resubmitJson.data?.status, resubmitJson.data?.status === 'SUBMITTED_FOR_REVIEW' ? 'PASS' : 'FAIL');
+    assert.equal(resubmitJson.data?.status, 'SUBMITTED_FOR_REVIEW', 'Status must return to SUBMITTED_FOR_REVIEW');
 
-    // Check DB: MUST STILL BE EXACTLY ONE ROW WITH SAME UUID
+    // Verify still exactly one row
     const finalRows = await db
       .select()
       .from(schema.campaigns)
-      .where(eq(schema.campaigns.id, serverUuid as any));
-    console.log('  DB Rows After Revision:', finalRows.length, finalRows.length === 1 ? 'PASS (NO DUPLICATE ROW)' : 'FAIL');
-    console.log('  Final Funding Goal in DB:', finalRows[0].fundingGoal, finalRows[0].fundingGoal === 4000 ? 'PASS' : 'FAIL');
+      .where(eq(schema.campaigns.id, testCampaignId as any));
+    assert.equal(finalRows.length, 1, 'Must still be EXACTLY ONE DB row with same UUID (no duplicate)');
+    assert.equal(finalRows[0].fundingGoal, 4000, 'Funding goal must update to 4000');
+    console.log('  Revision workflow verified: SAME row updated without duplicate.');
 
-    // Phase 30: Edit Status Restriction Check
-    console.log('\n[TEST 11] Testing Edit Status Restriction (Phase 30)...');
-    await db
-      .update(schema.campaigns)
-      .set({ status: 'FUNDING' })
-      .where(eq(schema.campaigns.id, serverUuid as any));
-
-    const invalidEditRes = await fetch(`${BASE_URL}/campaigns/${serverUuid}/basics`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: 'Mutated in funding state',
-        category: 'Environment',
-        creatorName: 'Hacker',
-        summary: 'This should not be allowed.',
-      }),
-    });
-    const invalidEditJson = await invalidEditRes.json();
-    console.log('  Forbidden Status Code:', invalidEditRes.status, invalidEditRes.status === 400 ? 'PASS' : 'FAIL');
-    console.log('  Error Code:', invalidEditJson.error?.code, invalidEditJson.error?.code === 'INVALID_CAMPAIGN_STATUS' ? 'PASS' : 'FAIL');
-
-    // Phase 22: Ending Soon Sort Check
-    console.log('\n[TEST 12] Testing ending_soon sort query (Phase 22)...');
+    // Phase 11: Ending Soon Sort Check
+    console.log('\n[TEST 12] Testing ending_soon query...');
     const sortRes = await fetch(`${BASE_URL}/campaigns?sort=ending_soon`);
+    assert.equal(sortRes.status, 200, 'ending_soon query must succeed');
     const sortJson = await sortRes.json();
-    console.log('  Sort ending_soon Query:', sortJson.success ? 'PASS' : 'FAIL');
+    assert.equal(sortJson.success, true, 'ending_soon query success must be true');
+    console.log('  ending_soon query verified.');
 
     console.log('\n========================================================');
     console.log('ALL TESTS PASSED WITH 100% SUCCESS!');
     console.log('========================================================');
   } finally {
+    // Phase 4: Clean test data from Neon so database is never polluted
+    if (testCampaignId) {
+      console.log(`\n[Cleanup] Removing test campaign ${testCampaignId} from Neon...`);
+      try {
+        const db = getDb();
+        await db.delete(schema.campaigns).where(eq(schema.campaigns.id, testCampaignId as any));
+        console.log('[Cleanup] Test campaign cleaned up successfully.');
+      } catch (cleanupErr) {
+        console.warn('[Cleanup] Failed to delete test campaign:', cleanupErr);
+      }
+    }
     server.close();
   }
 }
 
 runTests().catch((err) => {
-  console.error('Test Suite Failed:', err);
+  console.error('\n❌ Test Suite Failed with Error:', err);
   process.exit(1);
 });

@@ -51,6 +51,7 @@ export interface CampaignDraftStore {
   updateField: <K extends keyof CampaignDraft>(key: K, value: CampaignDraft[K]) => void;
   updateFields: (fields: Partial<CampaignDraft>) => void;
   setCurrentStep: (step: 1 | 2 | 3 | 4 | 5) => void;
+  setDraftServerId: (id: string) => void;
   setSyncStatus: (status: CampaignSyncStatus, error?: string) => void;
   addSource: (source: Omit<CampaignSource, 'id'> & { id?: string }) => void;
   updateSource: (id: string, updated: Partial<CampaignSource>) => void;
@@ -127,6 +128,20 @@ export const useCampaignDraftStore = create<CampaignDraftStore>()(
             ...state.draft,
             currentStep: step,
             lastSavedAt: now,
+          },
+          lastSavedAt: now,
+        }));
+      },
+
+      setDraftServerId: (id: string) => {
+        const now = new Date().toISOString();
+        set((state) => ({
+          draft: {
+            ...state.draft,
+            id,
+            syncStatus: 'SYNCED',
+            lastSyncError: undefined,
+            lastSyncedAt: now,
           },
           lastSavedAt: now,
         }));

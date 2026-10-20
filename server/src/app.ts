@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
 import { campaignRouter } from './modules/campaigns/campaign.routes';
+import { creatorRouter } from './modules/creator/creator.routes';
+import { reviewRouter } from './modules/reviews/review.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { apiSuccess } from './utils/response';
@@ -65,6 +67,8 @@ export function createApp(): Express {
 
   // API v1 Routes
   app.use('/api/v1/campaigns', campaignRouter);
+  app.use('/api/v1/me/campaigns', creatorRouter);
+  app.use('/api/v1/review/campaigns', reviewRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

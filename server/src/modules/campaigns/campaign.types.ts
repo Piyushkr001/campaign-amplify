@@ -80,6 +80,7 @@ export interface CampaignDetailDTO extends CampaignListDTO {
   // Lifecycle Timestamps
   submittedAt?: string;
   reviewStartedAt?: string;
+  requestedChangesAt?: string;
   approvedAt?: string;
   fundingStartedAt?: string;
   fundingGoalReachedAt?: string;
@@ -90,6 +91,18 @@ export interface CampaignDetailDTO extends CampaignListDTO {
   rejectedAt?: string;
   cancelledAt?: string;
   failedAt?: string;
+
+  // Review Feedback & Audit
+  reviewFeedback?: string;
+  rejectionReason?: string;
+  statusHistory?: Array<{
+    id: string;
+    fromStatus?: string | null;
+    toStatus: string;
+    actorType: string;
+    note?: string | null;
+    createdAt: string;
+  }>;
 }
 
 // Backward compatibility alias

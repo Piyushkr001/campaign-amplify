@@ -20,6 +20,8 @@ import { CreatorCampaignCard } from '@/components/campaign/CreatorCampaignCard';
 import { DraftCampaignCard } from '@/components/campaign/DraftCampaignCard';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { useCreatorCampaigns } from '@/hooks/useCampaigns';
+import { Config } from '@/constants/config';
 import {
   CREATOR_DASHBOARD_TABS,
   CREATOR_TAB_STATUS_MAPPING,
@@ -30,12 +32,23 @@ import { getEffectiveCampaign } from '@/utils/effective-campaign';
 
 export default function MyCampaignsScreen() {
   const router = useRouter();
-  const { campaigns, hasHydrated } = useMyCampaignsStore();
+  const { campaigns: localCampaigns, hasHydrated } = useMyCampaignsStore();
   const { draft, hasMeaningfulDraft, resetDraft } = useCampaignDraftStore();
   const [selectedTab, setSelectedTab] = useState<CreatorDashboardTab>('ALL');
 
+  // Query backend in API mode; fall back to local Zustand store in local mode
+  const {
+    data: apiCampaigns,
+    isLoading: isApiLoading,
+    isError,
+    refetch,
+  } = useCreatorCampaigns();
+
+  const activeCampaigns = Config.useApi && apiCampaigns ? apiCampaigns : localCampaigns;
+  const isLoading = Config.useApi ? isApiLoading && !apiCampaigns : !hasHydrated;
+
   // Compute authoritative effective campaign state including live funding adjustments
-  const effectiveCampaigns = campaigns.map(getEffectiveCampaign);
+  const effectiveCampaigns = activeCampaigns.map(getEffectiveCampaign);
 
   const showActiveDraft =
     (selectedTab === 'ALL' || selectedTab === 'DRAFTS') && hasMeaningfulDraft();
@@ -180,11 +193,21 @@ export default function MyCampaignsScreen() {
         </ScrollView>
       </View>
 
-      {/* Campaigns List or Loading/Empty State */}
-      {!hasHydrated ? (
+      {/* Campaigns List or Loading/Error/Empty State */}
+      {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Palette.primary700} />
           <Text style={styles.loadingText}>Loading your campaigns...</Text>
+        </View>
+      ) : Config.useApi && isError && !apiCampaigns ? (
+        <View style={styles.emptyWrapper}>
+          <EmptyState
+            iconName="cloud-offline-outline"
+            title="Unable to load campaigns"
+            description="Could not connect to the campaign service to retrieve your dashboard records."
+            actionTitle="Retry"
+            onAction={() => refetch()}
+          />
         </View>
       ) : filteredCampaigns.length === 0 && !showActiveDraft ? (
         <View style={styles.emptyWrapper}>
@@ -207,6 +230,8 @@ export default function MyCampaignsScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          refreshing={Config.useApi && isApiLoading}
+          onRefresh={Config.useApi ? () => refetch() : undefined}
           ListHeaderComponent={
             showActiveDraft ? (
               <DraftCampaignCard draft={draft} onDiscard={resetDraft} />

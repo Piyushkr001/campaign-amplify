@@ -57,6 +57,7 @@ export interface CampaignDetailApiDTO extends CampaignListApiDTO {
   }>;
   submittedAt?: string;
   reviewStartedAt?: string;
+  requestedChangesAt?: string;
   approvedAt?: string;
   fundingStartedAt?: string;
   fundingGoalReachedAt?: string;
@@ -67,6 +68,17 @@ export interface CampaignDetailApiDTO extends CampaignListApiDTO {
   rejectedAt?: string;
   cancelledAt?: string;
   failedAt?: string;
+  reviewFeedback?: string;
+  rejectionReason?: string;
+  statusHistory?: Array<{
+    id: string;
+    fromStatus?: string | null;
+    toStatus: any;
+    actor?: any;
+    actorType?: any;
+    note?: string | null;
+    createdAt: string;
+  }>;
 }
 
 export interface CampaignDraftApiDTO {

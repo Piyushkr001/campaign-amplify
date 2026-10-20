@@ -162,6 +162,8 @@ export interface Campaign {
   approvedAt?: string;
   requestedChangesAt?: string;
   rejectedAt?: string;
+  fundingStartedAt?: string;
+  /** @deprecated Canonical property is fundingStartedAt */
   fundedAt?: string;
   fundingGoalReachedAt?: string;
   fundingEndedAt?: string;

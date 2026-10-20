@@ -29,6 +29,8 @@ import { CampaignService } from '@/services/campaign.service';
 import { formatApiError } from '@/services/api-errors';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateReach, formatReachEstimate } from '@/utils/reach';
+import { queryClient } from '@/services/query-client';
+import { campaignKeys, reviewKeys } from '@/constants/query-keys';
 import {
   CampaignBasicsSchema,
   CampaignReachSchema,
@@ -248,6 +250,11 @@ export default function CreateSubmitScreen() {
           } else {
             addFromDraft({ ...draft, fundingGoal, id: serverId });
           }
+
+          // Invalidate creator and review queries so lists reconcile immediately with backend
+          queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+          queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+          queryClient.invalidateQueries({ queryKey: campaignKeys.all });
 
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           resetDraft();

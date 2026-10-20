@@ -25,6 +25,9 @@ import {
   InvalidCampaignStatusError,
 } from '../../utils/errors';
 import { canEditCampaign, canSubmitCampaign } from './campaign.lifecycle';
+import { transitionCampaign } from './campaign.transition';
+import { CAMPAIGN_POLICY } from '../../config/campaign-policy';
+import { resolveDemoCreatorId } from '../../utils/demo-identity';
 
 // Seed fallback data for when DATABASE_URL is completely unset locally
 const FALLBACK_PUBLIC_CAMPAIGNS: CampaignDetailDTO[] = [
@@ -233,7 +236,12 @@ export const CampaignRepository = {
           list.sort((a, b) => b.raised - a.raised);
           break;
         case 'ending_soon':
-          list.sort((a, b) => a.daysRemaining - b.daysRemaining);
+          list.sort((a, b) => {
+            const aPriority = a.status === 'FUNDING' ? 0 : 1;
+            const bPriority = b.status === 'FUNDING' ? 0 : 1;
+            if (aPriority !== bPriority) return aPriority - bPriority;
+            return a.daysRemaining - b.daysRemaining;
+          });
           break;
         case 'featured':
         default:
@@ -278,8 +286,9 @@ export const CampaignRepository = {
           orderByClause = [desc(schema.campaigns.amountRaised)];
           break;
         case 'ending_soon': {
+          const statusPrioritySql = sql`CASE WHEN ${schema.campaigns.status} = 'FUNDING' THEN 0 ELSE 1 END`;
           const endsAtSql = sql`COALESCE(${schema.campaigns.fundingStartedAt}, ${schema.campaigns.createdAt}) + (${schema.campaigns.durationDays} || ' days')::interval`;
-          orderByClause = [asc(endsAtSql)];
+          orderByClause = [asc(statusPrioritySql), asc(endsAtSql)];
           break;
         }
         case 'featured':
@@ -328,10 +337,18 @@ export const CampaignRepository = {
             raised: raised,
             backerCount: row.backerCount,
             fundingPercentage: fundingPercentage,
-            estimatedReachMin: Math.round(goal * 20 * 0.85),
-            estimatedReachMax: Math.round(goal * 30 * 0.85),
-            estimatedImpressionsMin: Math.round(goal * 20 * 0.85),
-            estimatedImpressionsMax: Math.round(goal * 30 * 0.85),
+            estimatedReachMin: Math.round(
+              goal * CAMPAIGN_POLICY.impressionsPerDollarMin * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+            ),
+            estimatedReachMax: Math.round(
+              goal * CAMPAIGN_POLICY.impressionsPerDollarMax * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+            ),
+            estimatedImpressionsMin: Math.round(
+              goal * CAMPAIGN_POLICY.impressionsPerDollarMin * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+            ),
+            estimatedImpressionsMax: Math.round(
+              goal * CAMPAIGN_POLICY.impressionsPerDollarMax * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+            ),
             daysRemaining: daysRemaining,
             featured: row.featured,
             createdAt: row.createdAt.toISOString(),
@@ -438,16 +455,25 @@ export const CampaignRepository = {
         fundingGoal: goal,
         raised: raised,
         fundingPercentage: fundingPercentage,
-        estimatedReachMin: Math.round(goal * 20 * 0.85),
-        estimatedReachMax: Math.round(goal * 30 * 0.85),
-        estimatedImpressionsMin: Math.round(goal * 20 * 0.85),
-        estimatedImpressionsMax: Math.round(goal * 30 * 0.85),
+        estimatedReachMin: Math.round(
+          goal * CAMPAIGN_POLICY.impressionsPerDollarMin * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+        ),
+        estimatedReachMax: Math.round(
+          goal * CAMPAIGN_POLICY.impressionsPerDollarMax * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+        ),
+        estimatedImpressionsMin: Math.round(
+          goal * CAMPAIGN_POLICY.impressionsPerDollarMin * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+        ),
+        estimatedImpressionsMax: Math.round(
+          goal * CAMPAIGN_POLICY.impressionsPerDollarMax * (CAMPAIGN_POLICY.advertisingPercentage / 100)
+        ),
         status: row.status,
         daysRemaining: daysRemaining,
         featured: row.featured,
         createdAt: row.createdAt.toISOString(),
         submittedAt: row.submittedAt?.toISOString(),
         reviewStartedAt: row.reviewStartedAt?.toISOString(),
+        requestedChangesAt: row.requestedChangesAt?.toISOString(),
         approvedAt: row.approvedAt?.toISOString(),
         fundingStartedAt: row.fundingStartedAt?.toISOString(),
         fundingGoalReachedAt: row.fundingGoalReachedAt?.toISOString(),
@@ -461,9 +487,9 @@ export const CampaignRepository = {
         backerCount: row.backerCount,
         distributionChannels: channels,
         useOfFunds: {
-          advertising: 85,
-          platformFee: 10,
-          paymentProcessing: 5,
+          advertising: CAMPAIGN_POLICY.advertisingPercentage,
+          platformFee: CAMPAIGN_POLICY.platformPercentage,
+          paymentProcessing: CAMPAIGN_POLICY.processingPercentage,
         },
         supportingSources: sources.map((s) => ({
           title: s.title,
@@ -506,6 +532,7 @@ export const CampaignRepository = {
         updatedAt: new Date(found.createdAt),
         submittedAt: null,
         reviewStartedAt: null,
+        requestedChangesAt: null,
         approvedAt: null,
         fundingStartedAt: found.fundingStartedAt ? new Date(found.fundingStartedAt) : null,
         fundingGoalReachedAt: null,
@@ -541,22 +568,42 @@ export const CampaignRepository = {
     }
     try {
       const db = getDb();
-      const userId = actorUserId || (await resolveDemoUserId());
+      const userId = actorUserId || (await resolveDemoCreatorId());
+      const now = new Date();
 
-      const [newCamp] = await db
-        .insert(schema.campaigns)
-        .values({
-          title: input.title || 'Untitled Draft',
-          creatorId: userId,
-          creatorDisplayName: 'Community Campaigner',
-          status: 'DRAFT',
-          durationDays: 14,
-        })
-        .returning();
+      let createdCamp: typeof schema.campaigns.$inferSelect;
+
+      await db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(schema.campaigns)
+          .values({
+            title: input.title || 'Untitled Draft',
+            creatorId: userId,
+            creatorDisplayName: 'Community Campaigner',
+            status: 'DRAFT',
+            durationDays: 14,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        // Phase 12: Record initial draft creation in status history
+        await tx.insert(schema.campaignStatusHistory).values({
+          campaignId: inserted.id,
+          fromStatus: null,
+          toStatus: 'DRAFT',
+          actorType: 'CREATOR',
+          actorId: (userId as any) || null,
+          note: 'Draft created',
+          createdAt: now,
+        });
+
+        createdCamp = inserted;
+      });
 
       return {
-        id: newCamp.id,
-        status: newCamp.status,
+        id: createdCamp!.id,
+        status: createdCamp!.status,
       };
     } catch (err) {
       console.error('[Database] Query failed in createDraft:', err);
@@ -801,8 +848,12 @@ export const CampaignRepository = {
         throw new IncompleteCampaignError('BASICS', missingBasics);
       }
 
-      // Step 2 Completeness Check: Story & Sources
+      // Step 2 Completeness Check: Story & Sources (Phase 6)
       const missingStory: string[] = [];
+      if (!existing.storyHeadline || existing.storyHeadline.trim().length < 5)
+        missingStory.push('storyHeadline');
+      if (!existing.storyIntro || existing.storyIntro.trim().length < 20)
+        missingStory.push('storyIntro');
       if (!existing.storyContent || existing.storyContent.trim().length < 100)
         missingStory.push('storyContent');
 
@@ -859,36 +910,25 @@ export const CampaignRepository = {
         throw new IncompleteCampaignError('REACH', missingReach);
       }
 
-      // Step 5: Execute atomic submission transition
-      const userId = actorUserId || (await resolveDemoUserId());
-      const now = new Date();
-
-      await db.transaction(async (tx) => {
-        await tx
-          .update(schema.campaigns)
-          .set({
-            status: 'SUBMITTED_FOR_REVIEW',
-            fundingGoal: input.fundingGoal,
-            submittedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(schema.campaigns.id, id as any));
-
-        await tx.insert(schema.campaignStatusHistory).values({
-          campaignId: id as any,
-          fromStatus: existing.status,
-          toStatus: 'SUBMITTED_FOR_REVIEW',
-          actorType: 'CREATOR',
-          actorId: (userId as any) || null,
-          note: 'Campaign successfully submitted by creator for editorial review.',
-        });
+      // Step 5: Execute atomic submission transition via central lifecycle helper
+      const userId = actorUserId || (await resolveDemoCreatorId());
+      const updatedCamp = await transitionCampaign({
+        campaignId: id,
+        nextStatus: 'SUBMITTED_FOR_REVIEW',
+        actorType: 'CREATOR',
+        actorId: userId,
+        note:
+          existing.status === 'CHANGES_REQUESTED'
+            ? 'Campaign resubmitted by creator with requested revisions addressed.'
+            : 'Campaign successfully submitted by creator for editorial review.',
+        fundingGoal: input.fundingGoal,
       });
 
       return {
-        id: existing.id,
-        status: 'SUBMITTED_FOR_REVIEW',
-        fundingGoal: input.fundingGoal,
-        submittedAt: now.toISOString(),
+        id: updatedCamp.id,
+        status: updatedCamp.status,
+        fundingGoal: updatedCamp.fundingGoal!,
+        submittedAt: (updatedCamp.submittedAt || new Date()).toISOString(),
       };
     } catch (err) {
       if (err instanceof AppError) throw err;

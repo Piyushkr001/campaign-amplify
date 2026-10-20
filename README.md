@@ -190,13 +190,86 @@ cd server && bun run test-campaign-sync.ts # Run end-to-end sync verification
 
 ## 🌐 Backend API Endpoints
 
+### Public Endpoints
 - `GET  /api/v1/health` - Process health check
 - `GET  /api/v1/ready` - Database connectivity probe (`SELECT 1`)
-- `GET  /api/v1/campaigns` - List public campaigns (with `search`, `sort`, `category`, pagination)
-- `GET  /api/v1/campaigns/:id` - Full campaign detail (UUID validated, returns `INVALID_CAMPAIGN_ID` on malformed IDs)
-- `POST /api/v1/campaigns` - Create initial campaign draft (`status: DRAFT`, returns server UUID)
-- `PATCH /api/v1/campaigns/:id/basics` - Step 1: Basics
+- `GET  /api/v1/campaigns` - List public campaigns (with `search`, `sort`, `category`, pagination; only active public states)
+- `GET  /api/v1/campaigns/:id` - Public campaign detail (UUID validated, returns `INVALID_CAMPAIGN_ID` on malformed IDs)
+
+### Creator Endpoints (Development Demo Identity: `creator@campaignamplify.org`)
+- `GET  /api/v1/me/campaigns` - List all campaigns owned by creator (all lifecycle states: `DRAFT` through `COMPLETED`)
+- `GET  /api/v1/me/campaigns/:id` - Full creator campaign detail (including review feedback, rejection reasons, and complete status history)
+- `POST /api/v1/campaigns` - Create initial campaign draft (`status: DRAFT`, returns server UUID, logs initial history)
+- `PATCH /api/v1/campaigns/:id/basics` - Step 1: Basics (validates category against allowed constants)
 - `PATCH /api/v1/campaigns/:id/story` - Step 2: Narrative & sources (atomic transaction)
 - `PATCH /api/v1/campaigns/:id/visuals` - Step 3: Social ad creative (upsert)
 - `PATCH /api/v1/campaigns/:id/reach` - Step 4: Audience targeting (upsert) & duration sync
-- `POST /api/v1/campaigns/:id/submit` - Step 5: Completeness validation & transition to `SUBMITTED_FOR_REVIEW`
+- `POST /api/v1/campaigns/:id/submit` - Step 5: Completeness validation (headline, intro, story, min 1 source) & transition to `SUBMITTED_FOR_REVIEW`
+
+### Reviewer & Moderation Endpoints (Demo Reviewer Identity: `reviewer@campaignamplify.org`)
+- `GET  /api/v1/review/campaigns` - Reviewer queue (`SUBMITTED_FOR_REVIEW`, `UNDER_REVIEW`, `CHANGES_REQUESTED`, `APPROVED`)
+- `GET  /api/v1/review/campaigns/:id` - Full campaign inspection for editorial reviewers (including citation audit)
+- `POST /api/v1/review/campaigns/:id/start` - Assign reviewer and begin verification (`UNDER_REVIEW`)
+- `POST /api/v1/review/campaigns/:id/request-changes` - Request creator revisions (`CHANGES_REQUESTED`, stores feedback)
+- `POST /api/v1/review/campaigns/:id/approve` - Approve campaign (`APPROVED`, stages for funding launch)
+- `POST /api/v1/review/campaigns/:id/reject` - Reject campaign with reason (`REJECTED`)
+- `POST /api/v1/review/campaigns/:id/start-funding` - Publish campaign to live community funding (`FUNDING`, opens backer contributions)
+
+---
+
+## 🚦 Server Lifecycle State Machine
+
+Campaign lifecycle authority is enforced strictly by PostgreSQL transactions:
+
+```
+DRAFT
+  ↓ (Creator Submit)
+SUBMITTED_FOR_REVIEW
+  ↓ (Reviewer Start)
+UNDER_REVIEW
+  ├──→ (Reviewer Request Changes) → CHANGES_REQUESTED
+  │                                     ↓ (Creator Resubmit same UUID)
+  │                                   SUBMITTED_FOR_REVIEW
+  │                                     ↓ (Reviewer Start round 2)
+  │                                   UNDER_REVIEW
+  ├──→ (Reviewer Approve) → APPROVED
+  │                           ↓ (Start Funding)
+  │                         FUNDING (Public & Backable)
+  │                           ├──→ FUNDING_GOAL_REACHED → DISTRIBUTION_PREPARATION → PROMOTING → COMPLETED
+  │                           └──→ FUNDING_ENDED        → REFUND_PENDING / DISTRIBUTION_PREPARATION
+  └──→ (Reviewer Reject)  → REJECTED
+```
+
+---
+
+## 🧪 Automated Testing & Verification
+
+Run the end-to-end test suites against your live Neon PostgreSQL database:
+
+### 1. Step Sync Hardening Suite
+```bash
+cd server
+bun run test:sync
+```
+Verifies UUID validation, 5-step draft persistence, category enum validation, database row integrity, true revision updating the same row, and automatic test data cleanup.
+
+### 2. Full Review & Lifecycle Suite
+```bash
+cd server
+bun run test:lifecycle
+```
+Verifies complete end-to-end workflow:
+1. Creator creates DRAFT
+2. Creator saves Basics, Story, Visuals, Reach
+3. Creator submits -> `SUBMITTED_FOR_REVIEW`
+4. Appears in Creator Dashboard and Reviewer Queue
+5. Reviewer starts review -> `UNDER_REVIEW`
+6. Reviewer requests changes -> `CHANGES_REQUESTED` (persisted feedback)
+7. Creator reads reviewer feedback in Creator Dashboard
+8. Creator edits story and resubmits on SAME UUID -> `SUBMITTED_FOR_REVIEW`
+9. Reviewer reviews round 2 and approves -> `APPROVED`
+10. Reviewer publishes to funding -> `FUNDING`
+11. Campaign becomes live and backable on public Explore
+12. Database verifies exactly ONE row exists with full status audit history sequence and review records
+13. Automatic database cleanup in Neon
+

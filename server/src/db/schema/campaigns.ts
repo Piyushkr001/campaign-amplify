@@ -63,6 +63,7 @@ export const campaigns = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     reviewStartedAt: timestamp('review_started_at', { withTimezone: true }),
+    requestedChangesAt: timestamp('requested_changes_at', { withTimezone: true }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     fundingStartedAt: timestamp('funding_started_at', { withTimezone: true }),
     fundingGoalReachedAt: timestamp('funding_goal_reached_at', { withTimezone: true }),

@@ -24,27 +24,51 @@ import { ReviewDecisionSheet } from '@/components/reviewer/ReviewDecisionSheet';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { formatCurrency, formatReachRange } from '@/utils/formatters';
 import { Config } from '@/constants/config';
+import { useReviewCampaign } from '@/hooks/useReviewer';
+import { ReviewerService } from '@/services/reviewer.service';
+import { ActivityIndicator } from 'react-native';
+import { getEffectiveCampaign } from '@/utils/effective-campaign';
 
 export default function ReviewerDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
     getCampaignById,
-    startReview,
-    approveCampaign,
-    requestChanges,
-    rejectCampaign,
-    moveToFunding,
     advanceToDistributionPrep,
     launchLivePromotion,
     completeCampaign,
     endFundingPeriod,
   } = useMyCampaignsStore();
 
-  const campaign = id ? getCampaignById(id) : undefined;
+  const { data: apiCampaign, isLoading: isApiLoading } = useReviewCampaign(id || '');
+  const localCampaign = id ? getCampaignById(id) : undefined;
+  const rawCampaign = Config.useApi ? apiCampaign || localCampaign : localCampaign;
+  const campaign = rawCampaign ? getEffectiveCampaign(rawCampaign) : undefined;
 
   // Dialog state for feedback/rejection input
   const [modalMode, setModalMode] = useState<'CHANGES' | 'REJECT' | null>(null);
+
+  if (Config.useApi && isApiLoading && !campaign) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <View style={styles.notFoundWrap}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={[styles.notFoundTitle, { marginTop: Spacing.md }]}>
+            Loading Campaign...
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   if (!campaign) {
     return (
@@ -75,10 +99,14 @@ export default function ReviewerDetailScreen() {
     );
   }
 
-  const handleStartReview = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    startReview(campaign.id, 'Reviewer assigned and began factual verification.');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  const handleStartReview = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      await ReviewerService.startReview(campaign.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Failed to start review.');
+    }
   };
 
   const handleApprove = () => {
@@ -89,9 +117,16 @@ export default function ReviewerDetailScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Approve Campaign',
-          onPress: () => {
-            approveCampaign(campaign.id, 'Passed source verification and policy compliance checks.');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          onPress: async () => {
+            try {
+              await ReviewerService.approve(
+                campaign.id,
+                'Passed source verification and policy compliance checks.'
+              );
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (err: any) {
+              Alert.alert('Action Failed', err.message || 'Failed to approve campaign.');
+            }
           },
         },
       ]
@@ -106,23 +141,30 @@ export default function ReviewerDetailScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Make Available for Funding',
-          onPress: () => {
-            moveToFunding(campaign.id, 'Published and opened for community backing.');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            Alert.alert(
-              'Campaign Published!',
-              'This campaign is now live on Explore and accepting backer contributions toward message distribution.',
-              [
-                {
-                  text: 'View in Explore',
-                  onPress: () => router.replace('/(tabs)/explore'),
-                },
-                {
-                  text: 'Remain in Reviewer',
-                  style: 'cancel',
-                },
-              ]
-            );
+          onPress: async () => {
+            try {
+              await ReviewerService.startFunding(
+                campaign.id,
+                'Published and opened for community backing.'
+              );
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              Alert.alert(
+                'Campaign Published!',
+                'This campaign is now live on Explore and accepting backer contributions toward message distribution.',
+                [
+                  {
+                    text: 'View in Explore',
+                    onPress: () => router.replace('/(tabs)/explore'),
+                  },
+                  {
+                    text: 'Remain in Reviewer',
+                    style: 'cancel',
+                  },
+                ]
+              );
+            } catch (err: any) {
+              Alert.alert('Action Failed', err.message || 'Failed to publish campaign for funding.');
+            }
           },
         },
       ]
@@ -137,13 +179,17 @@ export default function ReviewerDetailScreen() {
     setModalMode('REJECT');
   };
 
-  const handleConfirmDecision = (feedback: string) => {
-    if (modalMode === 'CHANGES') {
-      requestChanges(campaign.id, feedback);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-    } else if (modalMode === 'REJECT') {
-      rejectCampaign(campaign.id, feedback);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+  const handleConfirmDecision = async (feedback: string) => {
+    try {
+      if (modalMode === 'CHANGES') {
+        await ReviewerService.requestChanges(campaign.id, feedback);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      } else if (modalMode === 'REJECT') {
+        await ReviewerService.reject(campaign.id, feedback);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      }
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Failed to record editorial decision.');
     }
     setModalMode(null);
   };

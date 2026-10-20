@@ -14,6 +14,8 @@ import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ReviewCampaignCard } from '@/components/reviewer/ReviewCampaignCard';
+import { useReviewQueue } from '@/hooks/useReviewer';
+import { Config } from '@/constants/config';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { useState } from 'react';
 
@@ -21,15 +23,27 @@ type ReviewQueueTab = 'PENDING' | 'APPROVED' | 'ALL';
 
 export default function ReviewerQueueScreen() {
   const router = useRouter();
-  const { campaigns, hasHydrated } = useMyCampaignsStore();
+  const { campaigns: localCampaigns, hasHydrated } = useMyCampaignsStore();
   const [activeTab, setActiveTab] = useState<ReviewQueueTab>('PENDING');
 
+  const {
+    data: apiCampaigns,
+    isLoading: isApiLoading,
+    isError,
+    refetch,
+  } = useReviewQueue();
+
+  const allCampaigns = Config.useApi && apiCampaigns ? apiCampaigns : localCampaigns;
+  const isLoading = Config.useApi ? isApiLoading && !apiCampaigns : !hasHydrated;
+
   // Filter campaigns based on tab
-  const pendingCampaigns = campaigns.filter(
-    (c) => c.status === 'SUBMITTED_FOR_REVIEW' || c.status === 'UNDER_REVIEW'
+  const pendingCampaigns = allCampaigns.filter(
+    (c) =>
+      c.status === 'SUBMITTED_FOR_REVIEW' ||
+      c.status === 'UNDER_REVIEW' ||
+      c.status === 'CHANGES_REQUESTED'
   );
-  const approvedCampaigns = campaigns.filter((c) => c.status === 'APPROVED');
-  const allCampaigns = campaigns;
+  const approvedCampaigns = allCampaigns.filter((c) => c.status === 'APPROVED');
 
   const currentList =
     activeTab === 'PENDING'
@@ -95,11 +109,21 @@ export default function ReviewerQueueScreen() {
         ))}
       </View>
 
-      {/* Campaigns Queue List */}
-      {!hasHydrated ? (
+      {/* Campaigns Queue List or Loading/Error/Empty State */}
+      {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Palette.primary700} />
           <Text style={styles.loadingText}>Loading review queue...</Text>
+        </View>
+      ) : Config.useApi && isError && !apiCampaigns ? (
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            iconName="cloud-offline-outline"
+            title="Unable to load review queue"
+            description="Could not connect to the editorial review service."
+            actionTitle="Retry"
+            onAction={() => refetch()}
+          />
         </View>
       ) : currentList.length === 0 ? (
         <View style={styles.emptyWrap}>
@@ -121,6 +145,8 @@ export default function ReviewerQueueScreen() {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          refreshing={Config.useApi && isApiLoading}
+          onRefresh={Config.useApi ? () => refetch() : undefined}
           renderItem={({ item }) => (
             <ReviewCampaignCard
               campaign={item}

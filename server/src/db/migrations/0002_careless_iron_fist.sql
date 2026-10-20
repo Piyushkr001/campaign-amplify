@@ -1,0 +1,1 @@
+ALTER TABLE "campaigns" ADD COLUMN "requested_changes_at" timestamp with time zone;

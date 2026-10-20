@@ -306,6 +306,7 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
           timestampUpdates.rejectedAt = now;
           timestampUpdates.rejectionReason = context.note;
         } else if (nextStatus === 'FUNDING') {
+          timestampUpdates.fundingStartedAt = now;
           timestampUpdates.fundedAt = now;
         } else if (nextStatus === 'FUNDING_GOAL_REACHED') {
           timestampUpdates.fundingGoalReachedAt = now;

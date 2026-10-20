@@ -23,6 +23,8 @@ import { CampaignStatusTimeline } from '@/components/campaign/CampaignStatusTime
 import { ReviewFeedbackCard } from '@/components/campaign/ReviewFeedbackCard';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { useCampaignDraftStore } from '@/store/campaign-draft-store';
+import { useCreatorCampaign } from '@/hooks/useCampaigns';
+import { Config } from '@/constants/config';
 import {
   calculateFundingProgress,
   formatCurrency,
@@ -30,15 +32,38 @@ import {
 } from '@/utils/formatters';
 import { getEffectiveCampaign } from '@/utils/effective-campaign';
 import { isPublicCampaign } from '@/constants/campaign-status';
+import { ActivityIndicator } from 'react-native';
 
 export default function MyCampaignDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getCampaignById } = useMyCampaignsStore();
   const { loadCampaignIntoDraft } = useCampaignDraftStore();
+  const { data: apiCampaign, isLoading: isApiLoading } = useCreatorCampaign(id || '');
 
-  const rawCampaign = id ? getCampaignById(id) : undefined;
+  const localCampaign = id ? getCampaignById(id) : undefined;
+  const rawCampaign = Config.useApi ? apiCampaign || localCampaign : localCampaign;
   const campaign = rawCampaign ? getEffectiveCampaign(rawCampaign) : undefined;
+
+  if (Config.useApi && isApiLoading && !campaign) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <View style={styles.notFoundContainer}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={[styles.notFoundTitle, { marginTop: Spacing.md }]}>Loading Campaign...</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   if (!campaign) {
     return (
