@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -13,25 +14,60 @@ import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { useContributionStore } from '@/store/contribution-store';
+import { ContributionService } from '@/services/contribution.service';
+import { ContributionDetailApiDTO } from '@/types/contribution-api';
+import { Config } from '@/constants/config';
 
 export default function ContributionFailedScreen() {
   const router = useRouter();
-  const { paymentId, campaignId } = useLocalSearchParams<{
+  const { paymentId, campaignId, contributionId } = useLocalSearchParams<{
     paymentId?: string;
     campaignId?: string;
+    contributionId?: string;
   }>();
 
   const { getPaymentById } = useContributionStore();
-  const payment = paymentId ? getPaymentById(paymentId) : undefined;
+  const localPayment = paymentId ? getPaymentById(paymentId) : undefined;
 
-  const targetCampaignId = campaignId || payment?.campaignId || '';
+  const [serverContribution, setServerContribution] = useState<ContributionDetailApiDTO | null>(null);
+  const [isLoadingServerState, setIsLoadingServerState] = useState(false);
+
+  // Fetch authoritative server state in API mode (Requirement 8)
+  useEffect(() => {
+    if (Config.useApi && contributionId) {
+      setIsLoadingServerState(true);
+      ContributionService.getContribution(contributionId)
+        .then((detail) => {
+          if (detail) setServerContribution(detail);
+        })
+        .catch((err) => {
+          console.warn('[ContributionFailedScreen] Failed to load server contribution state:', err);
+        })
+        .finally(() => {
+          setIsLoadingServerState(false);
+        });
+    }
+  }, [contributionId]);
+
+  const targetCampaignId = campaignId || serverContribution?.campaignId || localPayment?.campaignId || '';
+  const activeContributionId = contributionId || serverContribution?.id || localPayment?.contributionId || '';
+
+  // Determine cancelled vs failed based on authoritative server state or local state
+  const isCancelled =
+    serverContribution?.status === 'CANCELLED' ||
+    serverContribution?.paymentStatus === 'CANCELLED' ||
+    localPayment?.status === 'CANCELLED';
+
+  const amount = serverContribution?.amount || localPayment?.amount || 50;
 
   const handleTryAgain = () => {
+    // Retry uses the SAME Contribution C (Requirement 7)
     router.replace({
       pathname: '/contribution/payment',
       params: {
         campaignId: targetCampaignId,
-        amount: payment?.amount ? payment.amount.toString() : '50',
+        amount: amount.toString(),
+        contributionId: isCancelled ? undefined : activeContributionId,
       },
     });
   };
@@ -54,8 +90,6 @@ export default function ContributionFailedScreen() {
       router.replace('/(tabs)/explore');
     }
   };
-
-  const isCancelled = payment?.status === 'CANCELLED';
 
   return (
     <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
@@ -89,13 +123,17 @@ export default function ContributionFailedScreen() {
             </Text>
           </View>
           <Text style={styles.errorMessage}>
-            {payment?.errorMessage ||
-              (isCancelled
-                ? 'Simulated payment was cancelled by contributor.'
-                : 'Simulated test card decline (Card declined by issuing bank).')}
+            {serverContribution?.status === 'CANCELLED'
+              ? 'Contribution was explicitly cancelled.'
+              : localPayment?.errorMessage ||
+                (isCancelled
+                  ? 'Simulated payment was cancelled by contributor.'
+                  : 'Simulated test card decline (Card declined by issuing bank).')}
           </Text>
-          {payment?.reference ? (
-            <Text style={styles.errorRef}>Attempt Reference: {payment.reference}</Text>
+          {serverContribution?.paymentReference || localPayment?.reference ? (
+            <Text style={styles.errorRef}>
+              Attempt Reference: {serverContribution?.paymentReference || localPayment?.reference}
+            </Text>
           ) : null}
         </View>
 
@@ -109,24 +147,24 @@ export default function ContributionFailedScreen() {
 
         {/* Actions */}
         <View style={styles.actionsContainer}>
-          <AppButton
-            title="Try Again"
-            onPress={handleTryAgain}
-            variant="primary"
-            size="lg"
-            fullWidth
-            icon={<Ionicons name="refresh-outline" size={18} color={Palette.pureWhite} />}
-          />
-
           {!isCancelled && (
             <AppButton
-              title="Change Contribution Amount"
-              onPress={handleChangeAmount}
-              variant="outline"
-              size="md"
+              title="Try Again"
+              onPress={handleTryAgain}
+              variant="primary"
+              size="lg"
               fullWidth
+              icon={<Ionicons name="refresh-outline" size={18} color={Palette.pureWhite} />}
             />
           )}
+
+          <AppButton
+            title={isCancelled ? 'Start New Contribution' : 'Change Contribution Amount'}
+            onPress={handleChangeAmount}
+            variant={isCancelled ? 'primary' : 'outline'}
+            size={isCancelled ? 'lg' : 'md'}
+            fullWidth
+          />
 
           <Pressable
             onPress={handleReturnToCampaign}

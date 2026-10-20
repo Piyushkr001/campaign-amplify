@@ -10,7 +10,12 @@ import {
   startFundingSchema,
 } from './review.schemas';
 
+import { authenticateUser, requireRole } from '../../middleware/auth.middleware';
+
 const router = Router();
+
+// All reviewer endpoints require authentication with role REVIEWER or ADMIN
+router.use(authenticateUser, requireRole('REVIEWER', 'ADMIN'));
 
 // GET /api/v1/review/campaigns
 router.get(

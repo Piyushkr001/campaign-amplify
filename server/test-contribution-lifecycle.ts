@@ -3,7 +3,8 @@ import { createApp } from './src/app';
 import { getDb, schema } from './src/db/index';
 import { eq, inArray } from 'drizzle-orm';
 import type { Server } from 'http';
-import { resolveDemoCreatorId } from './src/utils/demo-identity';
+import { resolveDemoCreatorId, resolveDemoBackerId, DEMO_BACKER_EMAIL } from './src/utils/demo-identity';
+import { AuthService } from './src/modules/auth/auth.service';
 
 async function runContributionLifecycleTest() {
   console.log('========================================================');
@@ -21,6 +22,17 @@ async function runContributionLifecycleTest() {
   const createdCampaignIds: string[] = [];
   const createdContributionIds: string[] = [];
   const demoCreatorId = await resolveDemoCreatorId();
+  const demoBackerId = await resolveDemoBackerId();
+
+  const backerToken = AuthService.signToken({
+    sub: demoBackerId,
+    email: DEMO_BACKER_EMAIL,
+    role: 'USER',
+  });
+  const backerHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${backerToken}`,
+  };
 
   try {
     // -------------------------------------------------------------
@@ -76,7 +88,7 @@ async function runContributionLifecycleTest() {
     console.log('\n[STAGE 3] Creating contribution (POST /campaigns/:id/contributions)...');
     const createContribRes = await fetch(`${BASE_URL}/campaigns/${seededCampaign.id}/contributions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({ amount: 100 }),
     });
 
@@ -96,7 +108,7 @@ async function runContributionLifecycleTest() {
     console.log('\n[STAGE 4] Simulating FAILED payment (POST /payments/simulate)...');
     const failRes = await fetch(`${BASE_URL}/payments/simulate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({
         contributionId: contribution1Id,
         outcome: 'FAILED',
@@ -130,7 +142,7 @@ async function runContributionLifecycleTest() {
     console.log('\n[STAGE 5] Simulating SUCCESS payment for same contribution...');
     const successRes = await fetch(`${BASE_URL}/payments/simulate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({
         contributionId: contribution1Id,
         outcome: 'SUCCESS',
@@ -166,7 +178,7 @@ async function runContributionLifecycleTest() {
     console.log('\n[STAGE 6] Verifying Payment Idempotency (Repeat SUCCESS request)...');
     const repeatRes = await fetch(`${BASE_URL}/payments/simulate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({
         contributionId: contribution1Id,
         outcome: 'SUCCESS',
@@ -215,7 +227,7 @@ async function runContributionLifecycleTest() {
     // Create $100 contribution (will reach $1,050, crossing $1,000 goal)
     const nearGoalContribRes = await fetch(`${BASE_URL}/campaigns/${nearGoalCampaign.id}/contributions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({ amount: 100 }),
     });
     const nearGoalContribJson = await nearGoalContribRes.json();
@@ -225,7 +237,7 @@ async function runContributionLifecycleTest() {
     // Simulate payment SUCCESS
     const goalPayRes = await fetch(`${BASE_URL}/payments/simulate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({
         contributionId: nearGoalContribId,
         outcome: 'SUCCESS',
@@ -264,7 +276,7 @@ async function runContributionLifecycleTest() {
     console.log('\n[STAGE 8] Verifying Campaign Backing Guard (Non-backable after goal reached)...');
     const blockedContribRes = await fetch(`${BASE_URL}/campaigns/${nearGoalCampaign.id}/contributions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({ amount: 50 }),
     });
 
@@ -277,7 +289,9 @@ async function runContributionLifecycleTest() {
     // STAGE 9: Contribution History API (GET /me/contributions)
     // -------------------------------------------------------------
     console.log('\n[STAGE 9] Verifying Contribution History API (GET /me/contributions)...');
-    const historyRes = await fetch(`${BASE_URL}/me/contributions`);
+    const historyRes = await fetch(`${BASE_URL}/me/contributions`, {
+      headers: backerHeaders,
+    });
     assert.equal(historyRes.status, 200, 'GET /me/contributions must return 200');
     const historyJson = await historyRes.json();
     assert.equal(historyJson.success, true);
@@ -291,7 +305,9 @@ async function runContributionLifecycleTest() {
     // STAGE 10: Contribution Detail API (GET /me/contributions/:id)
     // -------------------------------------------------------------
     console.log('\n[STAGE 10] Verifying Contribution Detail API (GET /me/contributions/:id)...');
-    const detailRes = await fetch(`${BASE_URL}/me/contributions/${contribution1Id}`);
+    const detailRes = await fetch(`${BASE_URL}/me/contributions/${contribution1Id}`, {
+      headers: backerHeaders,
+    });
     assert.equal(detailRes.status, 200, 'GET /me/contributions/:id must return 200');
     const detailJson = await detailRes.json();
     assert.equal(detailJson.data.id, contribution1Id);
@@ -304,7 +320,9 @@ async function runContributionLifecycleTest() {
     // STAGE 11: Receipt API (GET /me/contributions/:id/receipt)
     // -------------------------------------------------------------
     console.log('\n[STAGE 11] Verifying Receipt API (GET /me/contributions/:id/receipt)...');
-    const receiptRes = await fetch(`${BASE_URL}/me/contributions/${contribution1Id}/receipt`);
+    const receiptRes = await fetch(`${BASE_URL}/me/contributions/${contribution1Id}/receipt`, {
+      headers: backerHeaders,
+    });
     assert.equal(receiptRes.status, 200, 'GET /me/contributions/:id/receipt must return 200');
     const receiptJson = await receiptRes.json();
     assert.ok(receiptJson.data.receiptReference, 'Receipt reference must be populated');
@@ -313,9 +331,38 @@ async function runContributionLifecycleTest() {
     console.log(`  Confirmed: Receipt API returned official demo receipt (${receiptJson.data.receiptReference}).`);
 
     // -------------------------------------------------------------
-    // STAGE 12: Concurrency & Transaction Safety Test
+    // STAGE 12: Cancellation API (POST /me/contributions/:id/cancel)
     // -------------------------------------------------------------
-    console.log('\n[STAGE 12] Testing Concurrency & Race-condition Safety (Two simultaneous payments near goal)...');
+    console.log('\n[STAGE 12] Testing Contribution Cancellation (POST /me/contributions/:id/cancel)...');
+    const cancelCampaignRes = await fetch(`${BASE_URL}/campaigns/${seededCampaign.id}/contributions`, {
+      method: 'POST',
+      headers: backerHeaders,
+      body: JSON.stringify({ amount: 75 }),
+    });
+    const toCancelContribId = (await cancelCampaignRes.json()).data.id;
+    createdContributionIds.push(toCancelContribId);
+
+    const cancelRes = await fetch(`${BASE_URL}/me/contributions/${toCancelContribId}/cancel`, {
+      method: 'POST',
+      headers: backerHeaders,
+    });
+    assert.equal(cancelRes.status, 200, 'Cancel endpoint returns 200');
+    const cancelJson = await cancelRes.json();
+    assert.equal(cancelJson.data.status, 'CANCELLED');
+    assert.ok(cancelJson.data.cancelledAt, 'cancelledAt timestamp set');
+
+    // Attempting to cancel already CANCELLED should return 400
+    const reCancelRes = await fetch(`${BASE_URL}/me/contributions/${toCancelContribId}/cancel`, {
+      method: 'POST',
+      headers: backerHeaders,
+    });
+    assert.equal(reCancelRes.status, 400, 'Re-cancelling non-PENDING contribution returns 400');
+    console.log('  Confirmed: Pending contribution successfully cancelled and validated.');
+
+    // -------------------------------------------------------------
+    // STAGE 13: Concurrency & Transaction Safety Test
+    // -------------------------------------------------------------
+    console.log('\n[STAGE 13] Testing Concurrency & Race-condition Safety (Two simultaneous payments near goal)...');
     const [concurrentCampaign] = await db
       .insert(schema.campaigns)
       .values({
@@ -338,7 +385,7 @@ async function runContributionLifecycleTest() {
     // Create 2 separate pending contributions
     const cA_res = await fetch(`${BASE_URL}/campaigns/${concurrentCampaign.id}/contributions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({ amount: 100 }),
     });
     const cA_id = (await cA_res.json()).data.id;
@@ -346,7 +393,7 @@ async function runContributionLifecycleTest() {
 
     const cB_res = await fetch(`${BASE_URL}/campaigns/${concurrentCampaign.id}/contributions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: backerHeaders,
       body: JSON.stringify({ amount: 100 }),
     });
     const cB_id = (await cB_res.json()).data.id;
@@ -357,12 +404,12 @@ async function runContributionLifecycleTest() {
     const [resA, resB] = await Promise.all([
       fetch(`${BASE_URL}/payments/simulate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: backerHeaders,
         body: JSON.stringify({ contributionId: cA_id, outcome: 'SUCCESS', cardLast4: '1111' }),
       }),
       fetch(`${BASE_URL}/payments/simulate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: backerHeaders,
         body: JSON.stringify({ contributionId: cB_id, outcome: 'SUCCESS', cardLast4: '2222' }),
       }),
     ]);

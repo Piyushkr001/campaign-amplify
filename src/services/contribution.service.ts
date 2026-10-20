@@ -259,4 +259,12 @@ export const ContributionService = {
       disclaimer: 'Demo payment receipt. No real payment processor was used. Contributions directly fund ad creative and distribution amplification.',
     };
   },
+
+  cancelContribution: async (id: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/me/contributions/${id}/cancel`);
+      return;
+    }
+    useContributionStore.getState().cancelContribution(id);
+  },
 };

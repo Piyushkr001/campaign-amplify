@@ -8,13 +8,17 @@ import { Palette } from '@/constants/colors';
 
 import { queryClient } from '@/services/query-client';
 
+import { useAuthStore } from '@/store/auth-store';
+
 // Keep the splash screen visible while assets load
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   useEffect(() => {
-    // Hide splash screen once mounted
-    SplashScreen.hideAsync().catch(() => {});
+    // Hydrate auth state from SecureStore and hide splash screen
+    useAuthStore.getState().hydrateAuth().finally(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
   }, []);
 
   return (
@@ -28,6 +32,13 @@ export default function RootLayout() {
             animation: 'slide_from_right',
           }}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="auth"
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+            }}
+          />
           <Stack.Screen
             name="campaign/[id]"
             options={{

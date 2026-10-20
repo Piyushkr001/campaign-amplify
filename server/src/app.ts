@@ -7,6 +7,7 @@ import { creatorRouter } from './modules/creator/creator.routes';
 import { reviewRouter } from './modules/reviews/review.routes';
 import { myContributionsRouter } from './modules/contributions/contribution.routes';
 import { paymentsRouter } from './modules/payments/payment.routes';
+import { authRouter } from './modules/auth/auth.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { apiSuccess } from './utils/response';
@@ -68,6 +69,7 @@ export function createApp(): Express {
   });
 
   // API v1 Routes
+  app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/campaigns', campaignRouter);
   app.use('/api/v1/me/campaigns', creatorRouter);
   app.use('/api/v1/review/campaigns', reviewRouter);

@@ -27,3 +27,7 @@ export function validateRequest(schemas: {
     }
   };
 }
+
+export function validateBody(schema: ZodTypeAny) {
+  return validateRequest({ body: schema });
+}

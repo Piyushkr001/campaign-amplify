@@ -14,6 +14,9 @@ import { apiSuccess } from '../../utils/response';
 import { resolveDemoCreatorId } from '../../utils/demo-identity';
 
 async function getActorUserId(req: Request): Promise<string> {
+  if (req.user?.id) {
+    return req.user.id;
+  }
   const headerId = req.headers['x-actor-user-id'];
   if (typeof headerId === 'string' && headerId.trim().length > 0) {
     return headerId.trim();

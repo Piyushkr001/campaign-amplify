@@ -94,3 +94,75 @@ export class FundingConflictError extends AppError {
   }
 }
 
+export class AuthenticationRequiredError extends AppError {
+  constructor(
+    message = 'Authentication is required to perform this action.',
+    details?: unknown
+  ) {
+    super(message, 401, 'AUTHENTICATION_REQUIRED', details);
+  }
+}
+
+export class InvalidTokenError extends AppError {
+  constructor(
+    message = 'The provided authentication token is invalid or malformed.',
+    details?: unknown
+  ) {
+    super(message, 401, 'INVALID_TOKEN', details);
+  }
+}
+
+export class TokenExpiredError extends AppError {
+  constructor(
+    message = 'Authentication session has expired. Please log in again.',
+    details?: unknown
+  ) {
+    super(message, 401, 'TOKEN_EXPIRED', details);
+  }
+}
+
+export class InvalidCredentialsError extends AppError {
+  constructor(
+    message = 'Invalid email or password.',
+    details?: unknown
+  ) {
+    super(message, 401, 'INVALID_CREDENTIALS', details);
+  }
+}
+
+export class EmailAlreadyExistsError extends AppError {
+  constructor(
+    message = 'An account with this email address already exists.',
+    details?: unknown
+  ) {
+    super(message, 409, 'EMAIL_ALREADY_EXISTS', details);
+  }
+}
+
+export class InsufficientRoleError extends AppError {
+  constructor(
+    message = 'You do not have the required permissions to access this resource.',
+    details?: unknown
+  ) {
+    super(message, 403, 'INSUFFICIENT_ROLE', details);
+  }
+}
+
+export class CampaignAccessDeniedError extends AppError {
+  constructor(
+    message = 'You do not have permission to modify this campaign.',
+    details?: unknown
+  ) {
+    super(message, 403, 'CAMPAIGN_ACCESS_DENIED', details);
+  }
+}
+
+export class ContributionAccessDeniedError extends AppError {
+  constructor(
+    message = 'You do not have permission to access or process this contribution.',
+    details?: unknown
+  ) {
+    super(message, 403, 'CONTRIBUTION_ACCESS_DENIED', details);
+  }
+}
+

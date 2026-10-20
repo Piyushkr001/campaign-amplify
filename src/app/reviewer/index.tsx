@@ -17,12 +17,16 @@ import { ReviewCampaignCard } from '@/components/reviewer/ReviewCampaignCard';
 import { useReviewQueue } from '@/hooks/useReviewer';
 import { Config } from '@/constants/config';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useAuthStore } from '@/store/auth-store';
 import { useState } from 'react';
 
 type ReviewQueueTab = 'PENDING' | 'APPROVED' | 'ALL';
 
 export default function ReviewerQueueScreen() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
+  const isAuthorized = !Config.useApi || (isAuthenticated && (user?.role === 'REVIEWER' || user?.role === 'ADMIN'));
+
   const { campaigns: localCampaigns, hasHydrated } = useMyCampaignsStore();
   const [activeTab, setActiveTab] = useState<ReviewQueueTab>('PENDING');
 
@@ -32,6 +36,32 @@ export default function ReviewerQueueScreen() {
     isError,
     refetch,
   } = useReviewQueue();
+
+  if (!isAuthorized) {
+    return (
+      <ScreenContainer scrollable={false} paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            hitSlop={8}
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+          <Text style={styles.navTitle}>Reviewer Desk</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Reviewer Access Required"
+          description="This portal is restricted to authorized platform reviewers and administrators."
+          actionTitle="Sign In as Reviewer"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   const allCampaigns = Config.useApi && apiCampaigns ? apiCampaigns : localCampaigns;
   const isLoading = Config.useApi ? isApiLoading && !apiCampaigns : !hasHydrated;

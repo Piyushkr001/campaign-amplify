@@ -3,10 +3,13 @@ import { getDb, schema } from '../../db/index';
 import { env } from '../../config/env';
 import { PaymentResultDTO, PaymentOutcome } from './payment.types';
 import {
+  AppError,
   NotFoundError,
   DatabaseUnavailableError,
   CampaignNotBackableError,
   BadRequestError,
+  ForbiddenError,
+  ContributionAccessDeniedError,
 } from '../../utils/errors';
 
 function generateDemoReference(): string {
@@ -43,6 +46,14 @@ export const PaymentRepository = {
         const contribution = contributionRows[0];
         if (!contribution) {
           throw new NotFoundError(`Contribution "${params.contributionId}" not found.`);
+        }
+
+        // Ownership enforcement: Only the owning user can process payment for this contribution
+        if (params.actorUserId && contribution.userId && contribution.userId !== params.actorUserId) {
+          throw new ForbiddenError(
+            'You do not have permission to process payment for this contribution.',
+            'CONTRIBUTION_ACCESS_DENIED'
+          );
         }
 
         // 2. IDEMPOTENCY CHECK: If contribution is already CONFIRMED, return existing success state
@@ -114,8 +125,19 @@ export const PaymentRepository = {
         }
 
         const now = new Date();
-        const providerReference = generateDemoReference();
         const safeCardLast4 = params.cardLast4 || '4242';
+
+        // Helper to generate a unique provider reference
+        let providerReference = generateDemoReference();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const [collision] = await tx
+            .select({ id: schema.payments.id })
+            .from(schema.payments)
+            .where(eq(schema.payments.providerReference, providerReference))
+            .limit(1);
+          if (!collision) break;
+          providerReference = generateDemoReference();
+        }
 
         // 5. Handle FAILED outcome
         if (params.outcome === 'FAILED') {
@@ -202,7 +224,78 @@ export const PaymentRepository = {
           };
         }
 
-        // 7. Handle SUCCESS outcome (Transactional)
+        // 7. Handle SUCCESS outcome (Transactional & Concurrency-Safe)
+        // CRITICAL: Atomically transition contribution from PENDING to CONFIRMED.
+        // If another concurrent transaction already confirmed this contribution, zero rows return.
+        const confirmedRows = await tx
+          .update(schema.contributions)
+          .set({
+            status: 'CONFIRMED',
+            confirmedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.contributions.id, contribution.id),
+              eq(schema.contributions.status, 'PENDING')
+            )
+          )
+          .returning();
+
+        if (confirmedRows.length === 0) {
+          // Zero rows updated: Another concurrent transaction won the race or changed status!
+          const [latestContrib] = await tx
+            .select()
+            .from(schema.contributions)
+            .where(eq(schema.contributions.id, contribution.id))
+            .limit(1);
+
+          if (latestContrib?.status === 'CONFIRMED') {
+            // Idempotent recovery: Return existing confirmed state without duplicate funding!
+            const [existingPayment] = await tx
+              .select()
+              .from(schema.payments)
+              .where(
+                and(
+                  eq(schema.payments.contributionId, contribution.id),
+                  eq(schema.payments.status, 'SUCCESS')
+                )
+              )
+              .limit(1);
+
+            const [currentCampaign] = await tx
+              .select()
+              .from(schema.campaigns)
+              .where(eq(schema.campaigns.id, contribution.campaignId))
+              .limit(1);
+
+            return {
+              success: true,
+              paymentId: existingPayment?.id || 'idempotent-concurrent-recovery',
+              contributionId: contribution.id,
+              providerReference: existingPayment?.providerReference || 'DEMO-AMP-CONCURRENT',
+              status: 'SUCCESS',
+              amount: contribution.amount,
+              campaignId: currentCampaign!.id,
+              campaignStatus: currentCampaign!.status,
+              campaignAmountRaised: currentCampaign!.amountRaised,
+              campaignFundingGoal: currentCampaign!.fundingGoal || 0,
+              campaignBackerCount: currentCampaign!.backerCount,
+              goalReached: currentCampaign!.amountRaised >= (currentCampaign!.fundingGoal || 0),
+              cardLast4: existingPayment?.cardLast4 || safeCardLast4,
+              message: 'Payment already processed and contribution confirmed (concurrent idempotent response).',
+              createdAt: contribution.createdAt.toISOString(),
+              processedAt: (latestContrib.confirmedAt || now).toISOString(),
+            };
+          }
+
+          throw new BadRequestError(
+            `Contribution status changed to "${latestContrib?.status || 'UNKNOWN'}". Cannot process payment.`,
+            'CONTRIBUTION_NOT_PENDING'
+          );
+        }
+
+        // Winning transaction: Record SUCCESS payment
         const [payment] = await tx
           .insert(schema.payments)
           .values({
@@ -216,16 +309,6 @@ export const PaymentRepository = {
             createdAt: now,
           })
           .returning();
-
-        // Mark contribution CONFIRMED
-        await tx
-          .update(schema.contributions)
-          .set({
-            status: 'CONFIRMED',
-            confirmedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(schema.contributions.id, contribution.id));
 
         // 8. Atomic SQL increment for amountRaised and backerCount
         const [updatedCampaign] = await tx
@@ -295,7 +378,7 @@ export const PaymentRepository = {
         };
       });
     } catch (err) {
-      if (err instanceof NotFoundError || err instanceof CampaignNotBackableError || err instanceof BadRequestError) {
+      if (err instanceof AppError) {
         throw err;
       }
       console.error('[PaymentRepository] Error in simulate:', err);

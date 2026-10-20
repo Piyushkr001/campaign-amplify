@@ -10,6 +10,9 @@ import { apiSuccess } from '../../utils/response';
 import { resolveDemoBackerId } from '../../utils/demo-identity';
 
 async function getBackerUserId(req: Request): Promise<string> {
+  if (req.user?.id) {
+    return req.user.id;
+  }
   const headerId = req.headers['x-actor-user-id'];
   if (typeof headerId === 'string' && headerId.trim().length > 0) {
     return headerId.trim();
@@ -72,6 +75,17 @@ export const ContributionController = {
       const actorUserId = await getBackerUserId(req);
       const receipt = await ContributionService.getMyReceipt(id, actorUserId);
       apiSuccess(res, receipt);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  cancelMyContribution: async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params as unknown as ContributionIdParam;
+      const actorUserId = await getBackerUserId(req);
+      const result = await ContributionService.cancelContribution(id, actorUserId);
+      apiSuccess(res, result);
     } catch (err) {
       next(err);
     }

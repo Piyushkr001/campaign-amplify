@@ -27,6 +27,7 @@ import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 import { Config } from '@/constants/config';
 import { useContributionQuote } from '@/hooks/useContributions';
 import { ContributionService } from '@/services/contribution.service';
+import { useAuthStore } from '@/store/auth-store';
 
 export default function ContributionReviewScreen() {
   const router = useRouter();
@@ -71,6 +72,23 @@ export default function ContributionReviewScreen() {
 
   const handleContinueToPayment = async () => {
     if (isSubmitting) return;
+
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (Config.useApi && (!isAuthenticated || !user || user.isGuest)) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in or create an account to back this campaign and receive your contribution receipt.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Sign In',
+            onPress: () => router.push('/auth/login'),
+          },
+        ]
+      );
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
     try {

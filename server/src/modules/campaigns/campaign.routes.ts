@@ -27,33 +27,40 @@ router.get(
   CampaignController.getById
 );
 
-// Campaign Creation & 5-Step Draft Write Endpoints
+import { authenticateUser } from '../../middleware/auth.middleware';
+
+// Campaign Creation & 5-Step Draft Write Endpoints (Protected by JWT)
 router.post(
   '/',
+  authenticateUser,
   validateRequest({ body: createDraftSchema }),
   CampaignController.createDraft
 );
 
 router.patch(
   '/:id/basics',
+  authenticateUser,
   validateRequest({ params: campaignIdParamSchema, body: updateBasicsSchema }),
   CampaignController.updateBasics
 );
 
 router.patch(
   '/:id/story',
+  authenticateUser,
   validateRequest({ params: campaignIdParamSchema, body: updateStorySchema }),
   CampaignController.updateStory
 );
 
 router.patch(
   '/:id/visuals',
+  authenticateUser,
   validateRequest({ params: campaignIdParamSchema, body: updateVisualsSchema }),
   CampaignController.updateVisuals
 );
 
 router.patch(
   '/:id/reach',
+  authenticateUser,
   validateRequest({ params: campaignIdParamSchema, body: updateReachSchema }),
   CampaignController.updateReach
 );
@@ -62,6 +69,7 @@ import { campaignContributionsRouter } from '../contributions/contribution.route
 
 router.post(
   '/:id/submit',
+  authenticateUser,
   validateRequest({ params: campaignIdParamSchema, body: submitCampaignSchema }),
   CampaignController.submit
 );

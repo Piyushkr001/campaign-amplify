@@ -1,7 +1,11 @@
+export type UserRole = 'USER' | 'REVIEWER' | 'ADMIN';
+
 export interface User {
   id: string;
-  name: string;
   email: string;
+  displayName: string;
+  name: string; // compatibility alias for UI
+  role: UserRole;
   avatarUrl?: string;
   isGuest: boolean;
   backedCampaignCount: number;
@@ -12,5 +16,6 @@ export interface User {
 export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  isHydrated: boolean;
   isLoading: boolean;
 }

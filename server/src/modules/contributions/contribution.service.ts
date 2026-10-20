@@ -33,4 +33,9 @@ export const ContributionService = {
     const userId = actorUserId || (await resolveDemoBackerId());
     return ContributionRepository.findReceipt(id, userId);
   },
+
+  cancelContribution: async (id: string, actorUserId?: string) => {
+    const userId = actorUserId || (await resolveDemoBackerId());
+    return ContributionRepository.cancelPending(id, userId);
+  },
 };

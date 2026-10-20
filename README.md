@@ -242,50 +242,127 @@ UNDER_REVIEW
 
 ---
 
+---
+
+## 🔐 Real Authentication & Role-Based Access Control (RBAC)
+
+Campaign Amplify features JWT-based authentication and three roles: `USER`, `REVIEWER`, and `ADMIN`.
+
+```
+Mobile Sign In / Register
+    ↓
+JWT Signed on Server (HS256)
+    ↓
+expo-secure-store ('campaign_amplify_access_token')
+    ↓
+Axios Request Interceptor (Authorization: Bearer <token>)
+    ↓
+Express authenticateUser Middleware
+    ↓
+req.user = { id, email, role }
+```
+
+### 1. User Roles Matrix
+- **`USER`**: Can create campaigns, edit own drafts, submit own campaigns, view own Creator Dashboard, back funding campaigns, view own contributions, and download demo receipts. Cannot access reviewer routes.
+- **`REVIEWER`**: Inherits all USER capabilities, plus access to the Reviewer Queue (`/api/v1/review/*`), starting editorial reviews, requesting revisions, approving/rejecting campaigns, and launching live funding.
+- **`ADMIN`**: Full platform authority including all reviewer operations and administrative oversight.
+
+### 2. Password Security & Cryptography
+- Passwords are securely hashed with `bcryptjs` (salt rounds: 10). Plaintext passwords are never stored, logged, or serialized.
+- Token signing uses server-only environment variables (`JWT_SECRET`, `JWT_EXPIRES_IN`). Secrets are never bundled into the Expo mobile bundle.
+- Mobile client persists JWTs exclusively in hardware-backed `expo-secure-store` (never in `AsyncStorage`).
+
+### 3. Seed Demo Accounts
+Run `bun run db:seed` in `server/` to provision idempotent test accounts:
+| Role | Email | Password | Intended Use |
+| :--- | :--- | :--- | :--- |
+| **USER** | `creator@campaignamplify.org` | `Password123!` | Create & edit own campaigns, back funding campaigns |
+| **REVIEWER** | `reviewer@campaignamplify.org` | `Password123!` | Moderate queue, request revisions, approve, launch funding |
+| **ADMIN** | `admin@campaignamplify.org` | `AdminPassword123!` | Platform administration and editorial oversight |
+
+---
+
+## 🛡️ Financial Integrity & Idempotency Architecture
+
+Contributions and payment processing are hardened against race conditions and concurrent double-charging:
+
+### 1. Atomic Conditional Confirmation
+During payment simulation, contribution status is updated using atomic SQL:
+```sql
+UPDATE contributions
+SET status = 'CONFIRMED', confirmed_at = NOW(), updated_at = NOW()
+WHERE id = :contributionId AND status = 'PENDING'
+RETURNING *;
+```
+If two simultaneous `SUCCESS` requests arrive for the same contribution:
+- Exactly **one** transaction matches `status = 'PENDING'` and receives the returned row.
+- That winning transaction increments `campaign.amountRaised` and `campaign.backerCount`.
+- The losing transaction receives **0 rows**, loads the current state, observes `status = 'CONFIRMED'`, and returns the existing confirmed result **idempotently** without incrementing campaign funds.
+
+### 2. Database-Level Unique Invariants
+- **One Success Per Contribution**: A PostgreSQL partial unique index prevents application logic regression:
+  ```sql
+  CREATE UNIQUE INDEX payments_one_success_idx ON payments(contribution_id) WHERE status = 'SUCCESS';
+  ```
+- **Unique Provider Reference**: `payments.provider_reference` is strictly unique with automated collision retry.
+
+### 3. Contribution Cancellation
+- `POST /api/v1/me/contributions/:id/cancel` enables users to explicitly abandon pending checkouts. Transitions `PENDING` → `CANCELLED` without altering campaign funds.
+
+---
+
 ## 🧪 Automated Testing & Verification
 
 Run the end-to-end test suites against your live Neon PostgreSQL database:
 
-### 1. Step Sync Hardening Suite
+### 1. Real JWT Auth & RBAC Suite
+```bash
+cd server
+bun run test:auth
+```
+Verifies 16 authentication invariants: registration, duplicate email rejection (409), invalid credentials (401), login token acquisition, `/auth/me` profile validation, malformed token rejection, USER access blocked from reviewer queue (403), REVIEWER access granted (200), non-owner edit rejection (403), owner edit authorized (200), payment ownership validation, and receipt ownership protection.
+
+### 2. Financial Integrity & Concurrent Idempotency Suite
+```bash
+cd server
+bun run test:idempotency
+```
+Simultaneously fires two concurrent `SUCCESS` payment simulations on the same pending contribution near its funding goal. Asserts that `amountRaised` increments exactly once, `backerCount` increments once, exactly one `SUCCESS` payment row exists, and the `FUNDING_GOAL_REACHED` lifecycle transition triggers once.
+
+### 3. Step Sync Hardening Suite
 ```bash
 cd server
 bun run test:sync
 ```
-Verifies UUID validation, 5-step draft persistence, category enum validation, database row integrity, true revision updating the same row, and automatic test data cleanup.
 
-### 2. Full Review & Lifecycle Suite
+### 4. Full Review & Lifecycle Suite
 ```bash
 cd server
 bun run test:lifecycle
 ```
-Verifies complete end-to-end workflow:
-1. Creator creates DRAFT
-2. Creator saves Basics, Story, Visuals, Reach
-3. Creator submits -> `SUBMITTED_FOR_REVIEW`
-4. Appears in Creator Dashboard and Reviewer Queue
-5. Reviewer starts review -> `UNDER_REVIEW`
-6. Reviewer requests changes -> `CHANGES_REQUESTED` (persisted feedback)
-7. Creator reads reviewer feedback in Creator Dashboard
-8. Creator edits story and resubmits on SAME UUID -> `SUBMITTED_FOR_REVIEW`
-9. Reviewer reviews round 2 and approves -> `APPROVED`
-10. Reviewer publishes to funding -> `FUNDING`
-11. Campaign becomes live and backable on public Explore
-### 3. Contribution & Payment Lifecycle Suite
+
+### 5. Contribution & Payment Lifecycle Suite
 ```bash
 cd server
 bun run test:contribution
 ```
-Verifies complete transactional contribution and payment flow:
-1. Seed `FUNDING` campaign in Neon PostgreSQL
-2. Calculate quote math (`CAMPAIGN_POLICY`: 85% ad, 10% platform, 5% processing; 20–30 impressions/$)
-3. Create `PENDING` contribution
-4. Simulate `FAILED` payment — verifies campaign funding and backer count remain unchanged
-5. Simulate `SUCCESS` payment — confirms contribution, updates payment, increments `amountRaised` and `backerCount`
-6. Idempotency verification — duplicate success payment returns existing confirmed record without duplicate funding
-7. Near-goal crossing — contribution crosses goal and automatically transitions campaign `FUNDING` → `FUNDING_GOAL_REACHED` with `SYSTEM` status history
-8. Campaign backing guard — verifies `FUNDING_GOAL_REACHED` campaign rejects new contributions with `409 CAMPAIGN_NOT_BACKABLE`
-9. Backer contribution history (`GET /me/contributions`) and detail (`GET /me/contributions/:id`)
-10. Demo sponsorship receipt (`GET /me/contributions/:id/receipt`)
-11. Concurrency test — two simultaneous payments near goal apply without lost updates and transition fires exactly once
-12. Clean database teardown in Neon
+
+---
+
+## 📋 Available Commands (Bun Only)
+
+```bash
+bun expo start                  # Start Metro bundler
+bunx tsc --noEmit               # Mobile TypeScript check
+cd server && bun run typecheck  # Server TypeScript check
+cd server && bun run test:auth  # Run auth & RBAC integration test
+cd server && bun run test:idempotency # Run financial idempotency test
+cd server && bun run test:sync  # Run campaign step sync test
+cd server && bun run test:lifecycle # Run review lifecycle test
+cd server && bun run test:contribution # Run contribution lifecycle test
+bun run db:migrate              # Run Drizzle migrations
+bun run db:studio               # Launch Drizzle Studio (https://local.drizzle.studio)
+bun run db:seed                 # Populate idempotent demo data
+bun run server                  # Start backend dev server
+```
 

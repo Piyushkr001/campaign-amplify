@@ -13,49 +13,75 @@ import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { useAuthStore } from '@/store/auth-store';
-
 import { router } from 'expo-router';
 
 export default function ProfileScreen() {
-  const { user } = useAuthStore();
+  const { user, isAuthenticated, signOut } = useAuthStore();
+  const isGuest = !isAuthenticated || !user || user.isGuest;
+  const isReviewerOrAdmin = user?.role === 'REVIEWER' || user?.role === 'ADMIN';
 
   const handleInfoModal = (title: string, message: string) => {
     Alert.alert(title, message, [{ text: 'Close' }]);
   };
 
-  const handleAuthPlaceholder = (action: string) => {
-    Alert.alert(
-      `${action} (Phase 2)`,
-      'User accounts, authentication, and contributor dashboards are coming in a future release phase.',
-      [{ text: 'Got It' }]
-    );
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+        },
+      },
+    ]);
   };
+
+  // Build management items conditionally:
+  // Reviewer Demo is strictly hidden from normal USERs (Requirement 45)
+  const managementItems = [
+    {
+      icon: 'folder-outline' as const,
+      label: 'My Campaigns',
+      subtitle: 'Manage drafts, review status, funding, and distribution',
+      onPress: () => {
+        if (isGuest) {
+          router.push('/auth/login');
+        } else {
+          router.push('/my-campaigns');
+        }
+      },
+      badge: 'Creator',
+    },
+    ...(isReviewerOrAdmin
+      ? [
+          {
+            icon: 'shield-checkmark-outline' as const,
+            label: 'Reviewer Queue',
+            subtitle: 'Inspect claims, approve, request changes, start funding',
+            onPress: () => router.push('/reviewer'),
+            badge: user?.role === 'ADMIN' ? 'Admin' : 'Reviewer',
+          },
+        ]
+      : []),
+    {
+      icon: 'receipt-outline' as const,
+      label: 'Backed Campaigns & Receipts',
+      subtitle: 'View your contribution history and demo receipts',
+      onPress: () => {
+        if (isGuest) {
+          router.push('/auth/login');
+        } else {
+          router.push('/(tabs)/activity');
+        }
+      },
+    },
+  ];
 
   const accountSections = [
     {
       title: 'Creator & Review Management',
-      items: [
-        {
-          icon: 'folder-outline' as const,
-          label: 'My Campaigns',
-          subtitle: 'Manage drafts, review status, funding, and distribution',
-          onPress: () => router.push('/my-campaigns'),
-          badge: 'Creator',
-        },
-        {
-          icon: 'shield-checkmark-outline' as const,
-          label: 'Reviewer Demo',
-          subtitle: 'Internal prototype: inspect claims, approve, request changes',
-          onPress: () => router.push('/reviewer'),
-          badge: 'Demo Desk',
-        },
-        {
-          icon: 'receipt-outline' as const,
-          label: 'Backed Campaigns & Receipts',
-          subtitle: 'View your contribution history and demo receipts',
-          onPress: () => router.push('/(tabs)/activity'),
-        },
-      ],
+      items: managementItems,
     },
     {
       title: 'Platform Information',
@@ -126,41 +152,95 @@ export default function ProfileScreen() {
         <Text style={styles.title}>Profile</Text>
       </View>
 
-      {/* Guest Mode Card */}
+      {/* Account Card (Guest vs Authenticated) */}
       <View style={styles.guestCard}>
         <View style={styles.avatarRow}>
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={28} color={Palette.navy700} />
+          <View
+            style={[
+              styles.avatarCircle,
+              !isGuest && styles.avatarCircleAuth,
+              user?.role === 'REVIEWER' && styles.avatarCircleReviewer,
+              user?.role === 'ADMIN' && styles.avatarCircleAdmin,
+            ]}>
+            <Ionicons
+              name={isGuest ? 'person' : 'person-circle'}
+              size={28}
+              color={
+                isGuest
+                  ? Palette.navy700
+                  : user?.role === 'REVIEWER'
+                  ? Palette.purple700
+                  : user?.role === 'ADMIN'
+                  ? Palette.amber800
+                  : Palette.primary700
+              }
+            />
           </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user?.name || 'Guest Contributor'}</Text>
-            <View style={styles.guestBadge}>
-              <Text style={styles.guestBadgeText}>GUEST MODE</Text>
-            </View>
+            <Text style={styles.userName}>
+              {isGuest ? 'Guest Contributor' : user?.displayName || user?.name || 'Campaign Contributor'}
+            </Text>
+            {isGuest ? (
+              <View style={styles.guestBadge}>
+                <Text style={styles.guestBadgeText}>GUEST MODE</Text>
+              </View>
+            ) : (
+              <View style={styles.userRoleRow}>
+                <Text style={styles.userEmail}>{user?.email}</Text>
+                <View
+                  style={[
+                    styles.roleBadge,
+                    user?.role === 'REVIEWER' && styles.roleBadgeReviewer,
+                    user?.role === 'ADMIN' && styles.roleBadgeAdmin,
+                  ]}>
+                  <Text
+                    style={[
+                      styles.roleBadgeText,
+                      user?.role === 'REVIEWER' && styles.roleBadgeTextReviewer,
+                      user?.role === 'ADMIN' && styles.roleBadgeTextAdmin,
+                    ]}>
+                    {user?.role}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
-        <Text style={styles.guestDescription}>
-          Sign in or create an account to manage your campaigns, track backed message distribution, and
-          save campaigns for later.
-        </Text>
-
-        <View style={styles.authButtonsRow}>
-          <AppButton
-            title="Sign In"
-            onPress={() => handleAuthPlaceholder('Sign In')}
-            variant="primary"
-            size="md"
-            style={styles.authBtn}
-          />
-          <AppButton
-            title="Create Account"
-            onPress={() => handleAuthPlaceholder('Create Account')}
-            variant="secondary"
-            size="md"
-            style={styles.authBtn}
-          />
-        </View>
+        {isGuest ? (
+          <>
+            <Text style={styles.guestDescription}>
+              Sign in or create an account to create campaigns, track backed message distribution, and
+              access community tools.
+            </Text>
+            <View style={styles.authButtonsRow}>
+              <AppButton
+                title="Sign In"
+                onPress={() => router.push('/auth/login')}
+                variant="primary"
+                size="md"
+                style={styles.authBtn}
+              />
+              <AppButton
+                title="Create Account"
+                onPress={() => router.push('/auth/register')}
+                variant="secondary"
+                size="md"
+                style={styles.authBtn}
+              />
+            </View>
+          </>
+        ) : (
+          <View style={styles.authenticatedRow}>
+            <AppButton
+              title="Sign Out"
+              onPress={handleSignOut}
+              variant="outline"
+              size="sm"
+              style={styles.signOutBtn}
+            />
+          </View>
+        )}
       </View>
 
       {/* Menu Settings Sections */}
@@ -186,8 +266,20 @@ export default function ProfileScreen() {
                   <View style={styles.menuLabelRow}>
                     <Text style={styles.menuItemLabel}>{item.label}</Text>
                     {'badge' in item && item.badge ? (
-                      <View style={styles.itemBadge}>
-                        <Text style={styles.itemBadgeText}>{item.badge}</Text>
+                      <View
+                        style={[
+                          styles.itemBadge,
+                          item.badge === 'Reviewer' && styles.itemBadgeReviewer,
+                          item.badge === 'Admin' && styles.itemBadgeAdmin,
+                        ]}>
+                        <Text
+                          style={[
+                            styles.itemBadgeText,
+                            item.badge === 'Reviewer' && styles.itemBadgeTextReviewer,
+                            item.badge === 'Admin' && styles.itemBadgeTextAdmin,
+                          ]}>
+                          {item.badge}
+                        </Text>
                       </View>
                     ) : null}
                   </View>
@@ -202,7 +294,7 @@ export default function ProfileScreen() {
 
       {/* App Version & Non-Donation Disclaimer */}
       <View style={styles.footerNote}>
-        <Text style={styles.versionText}>Campaign Amplification Platform v1.0.0 (Phase 1)</Text>
+        <Text style={styles.versionText}>Campaign Amplification Platform v1.1.0 (JWT + RBAC)</Text>
         <Text style={styles.legalDisclaimer}>
           Amplify facilitates collective advertising and public message distribution. Contributions
           are allocated toward paid media distribution and do not constitute direct donations to
@@ -244,6 +336,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarCircleAuth: {
+    backgroundColor: Palette.primary50,
+  },
+  avatarCircleReviewer: {
+    backgroundColor: Palette.purple50,
+  },
+  avatarCircleAdmin: {
+    backgroundColor: Palette.amber50,
+  },
   userInfo: {
     flex: 1,
   },
@@ -252,6 +353,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Palette.navy950,
     marginBottom: 2,
+  },
+  userEmail: {
+    fontSize: 12,
+    color: Palette.neutral500,
+  },
+  userRoleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  roleBadge: {
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: BorderRadius.pill,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Palette.primary700,
+  },
+  roleBadgeReviewer: {
+    backgroundColor: Palette.purple50,
+    borderColor: Palette.purple200,
+  },
+  roleBadgeTextReviewer: {
+    color: Palette.purple700,
+  },
+  roleBadgeAdmin: {
+    backgroundColor: Palette.amber50,
+    borderColor: Palette.amber200,
+  },
+  roleBadgeTextAdmin: {
+    color: Palette.amber800,
   },
   guestBadge: {
     alignSelf: 'flex-start',
@@ -278,6 +416,14 @@ const styles = StyleSheet.create({
   },
   authBtn: {
     flex: 1,
+  },
+  authenticatedRow: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  signOutBtn: {
+    minWidth: 100,
   },
   sectionContainer: {
     marginBottom: Spacing.lg,
@@ -341,6 +487,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Palette.primary700,
     textTransform: 'uppercase',
+  },
+  itemBadgeReviewer: {
+    backgroundColor: Palette.purple50,
+    borderColor: Palette.purple200,
+  },
+  itemBadgeTextReviewer: {
+    color: Palette.purple700,
+  },
+  itemBadgeAdmin: {
+    backgroundColor: Palette.amber50,
+    borderColor: Palette.amber200,
+  },
+  itemBadgeTextAdmin: {
+    color: Palette.amber800,
   },
   menuItemLabel: {
     ...Typography.bodySmall,

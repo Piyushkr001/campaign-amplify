@@ -3,6 +3,8 @@ import { createApp } from './src/app';
 import { getDb, schema } from './src/db/index';
 import { eq } from 'drizzle-orm';
 import type { Server } from 'http';
+import { resolveDemoCreatorId, resolveDemoReviewerId, DEMO_CREATOR_EMAIL, DEMO_REVIEWER_EMAIL } from './src/utils/demo-identity';
+import { AuthService } from './src/modules/auth/auth.service';
 
 async function runReviewLifecycleTest() {
   console.log('========================================================');
@@ -19,12 +21,19 @@ async function runReviewLifecycleTest() {
   let testCampaignId: string | null = null;
   const db = getDb();
 
+  const creatorId = await resolveDemoCreatorId();
+  const reviewerId = await resolveDemoReviewerId();
+  const creatorToken = AuthService.signToken({ sub: creatorId, email: DEMO_CREATOR_EMAIL, role: 'USER' });
+  const reviewerToken = AuthService.signToken({ sub: reviewerId, email: DEMO_REVIEWER_EMAIL, role: 'REVIEWER' });
+  const creatorHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${creatorToken}` };
+  const reviewerHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${reviewerToken}` };
+
   try {
     // 1. Create Backend Draft (mode = NEW)
     console.log('[STAGE 1] Creator: Create backend DRAFT...');
     const createRes = await fetch(`${BASE_URL}/campaigns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({ title: 'Autonomous Air Quality Monitoring Network' }),
     });
     assert.equal(createRes.status, 201, 'POST /campaigns must return 201');
@@ -38,7 +47,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 2] Creator: Save Step 1 (Basics)...');
     const basicsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/basics`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         title: 'Autonomous Air Quality Monitoring Network',
         category: 'Environment',
@@ -54,7 +63,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 3] Creator: Save Step 2 (Story & Sources)...');
     const storyRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         storyHeadline: 'Real-time Toxic Particulate Tracking for Commuters',
         storyIntro: 'Urban air pollution spikes during morning commutes are severely under-reported.',
@@ -75,7 +84,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 4] Creator: Save Step 3 (Visuals & Ad Creative)...');
     const visualsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/visuals`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         adHeadline: 'Check Today’s Commute Air Quality Index',
         adDescription: 'Live sensor alerts and health advisories for city transit riders.',
@@ -90,7 +99,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 5] Creator: Save Step 4 (Reach & Targeting)...');
     const reachRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/reach`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         locations: ['Metro Area', 'Transit Corridors'],
         interests: ['Public Health', 'Clean Energy', 'Commuter Transit'],
@@ -106,7 +115,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 6] Creator: Submit campaign (POST /submit)...');
     const submitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({ fundingGoal: 12000 }),
     });
     assert.equal(submitRes.status, 200, 'POST /submit must return 200');
@@ -117,14 +126,18 @@ async function runReviewLifecycleTest() {
 
     // 7. Verify in Creator Dashboard API (GET /me/campaigns)
     console.log('\n[STAGE 7] Creator Dashboard: Check GET /me/campaigns and GET /me/campaigns/:id...');
-    const creatorListRes = await fetch(`${BASE_URL}/me/campaigns`);
+    const creatorListRes = await fetch(`${BASE_URL}/me/campaigns`, {
+      headers: { Authorization: `Bearer ${creatorToken}` },
+    });
     assert.equal(creatorListRes.status, 200, 'GET /me/campaigns must return 200');
     const creatorListJson = await creatorListRes.json();
     const foundInCreatorList = creatorListJson.data?.find((c: any) => c.id === testCampaignId);
     assert.ok(foundInCreatorList, 'Campaign must appear in Creator Dashboard API');
     assert.equal(foundInCreatorList.status, 'SUBMITTED_FOR_REVIEW');
 
-    const creatorDetailRes = await fetch(`${BASE_URL}/me/campaigns/${testCampaignId}`);
+    const creatorDetailRes = await fetch(`${BASE_URL}/me/campaigns/${testCampaignId}`, {
+      headers: { Authorization: `Bearer ${creatorToken}` },
+    });
     assert.equal(creatorDetailRes.status, 200, 'GET /me/campaigns/:id must return 200');
     const creatorDetailJson = await creatorDetailRes.json();
     assert.equal(creatorDetailJson.data?.id, testCampaignId);
@@ -133,7 +146,9 @@ async function runReviewLifecycleTest() {
 
     // 8. Reviewer Queue Inspection (GET /review/campaigns)
     console.log('\n[STAGE 8] Reviewer: Check GET /review/campaigns...');
-    const queueRes = await fetch(`${BASE_URL}/review/campaigns`);
+    const queueRes = await fetch(`${BASE_URL}/review/campaigns`, {
+      headers: { Authorization: `Bearer ${reviewerToken}` },
+    });
     assert.equal(queueRes.status, 200, 'GET /review/campaigns must return 200');
     const queueJson = await queueRes.json();
     const foundInQueue = queueJson.data?.find((c: any) => c.id === testCampaignId);
@@ -145,6 +160,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 9] Reviewer: Start review (POST /review/campaigns/:id/start)...');
     const startRes = await fetch(`${BASE_URL}/review/campaigns/${testCampaignId}/start`, {
       method: 'POST',
+      headers: { Authorization: `Bearer ${reviewerToken}` },
     });
     assert.equal(startRes.status, 200, 'Start review must return 200');
     const startJson = await startRes.json();
@@ -157,7 +173,7 @@ async function runReviewLifecycleTest() {
     const FEEDBACK_TEXT = 'Please provide an additional peer-reviewed sensor calibration source and clarify transit agency permissions.';
     const reqChangesRes = await fetch(`${BASE_URL}/review/campaigns/${testCampaignId}/request-changes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: reviewerHeaders,
       body: JSON.stringify({ feedback: FEEDBACK_TEXT }),
     });
     assert.equal(reqChangesRes.status, 200, 'Request changes must return 200');
@@ -168,7 +184,9 @@ async function runReviewLifecycleTest() {
 
     // 11. Creator: Verify Reviewer Feedback in Creator API
     console.log('\n[STAGE 11] Creator: Verify reviewer feedback appears on GET /me/campaigns/:id...');
-    const revFeedbackRes = await fetch(`${BASE_URL}/me/campaigns/${testCampaignId}`);
+    const revFeedbackRes = await fetch(`${BASE_URL}/me/campaigns/${testCampaignId}`, {
+      headers: { Authorization: `Bearer ${creatorToken}` },
+    });
     const revFeedbackJson = await revFeedbackRes.json();
     assert.equal(revFeedbackJson.data?.status, 'CHANGES_REQUESTED');
     assert.equal(revFeedbackJson.data?.reviewFeedback, FEEDBACK_TEXT, 'Creator must see exact feedback text');
@@ -178,7 +196,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 12] Creator: Revision edit on same UUID (PATCH /story)...');
     const revStoryRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         storyHeadline: 'Real-time Toxic Particulate Tracking for Commuters',
         storyIntro: 'Urban air pollution spikes during morning commutes are severely under-reported.',
@@ -204,7 +222,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 13] Creator: Resubmit campaign (POST /submit)...');
     const resubmitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({ fundingGoal: 12000 }),
     });
     assert.equal(resubmitRes.status, 200, 'Resubmit must return 200');
@@ -217,6 +235,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 14] Reviewer: Start 2nd review round (POST /start)...');
     const start2Res = await fetch(`${BASE_URL}/review/campaigns/${testCampaignId}/start`, {
       method: 'POST',
+      headers: { Authorization: `Bearer ${reviewerToken}` },
     });
     assert.equal(start2Res.status, 200, 'Start review round 2 must return 200');
     const start2Json = await start2Res.json();
@@ -227,7 +246,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 15] Reviewer: Approve campaign (POST /approve)...');
     const approveRes = await fetch(`${BASE_URL}/review/campaigns/${testCampaignId}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: reviewerHeaders,
       body: JSON.stringify({ note: 'Calibration citations verified and methodology approved.' }),
     });
     assert.equal(approveRes.status, 200, 'Approve must return 200');
@@ -240,7 +259,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 16] Reviewer/Admin: Publish to public funding (POST /start-funding)...');
     const fundingRes = await fetch(`${BASE_URL}/review/campaigns/${testCampaignId}/start-funding`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: reviewerHeaders,
       body: JSON.stringify({ note: 'Campaign launched into public community amplification backing.' }),
     });
     assert.equal(fundingRes.status, 200, 'Start funding must return 200');
@@ -302,7 +321,7 @@ async function runReviewLifecycleTest() {
     console.log('\n[STAGE 19] Testing State Machine Protection (Disallow creator editing while FUNDING)...');
     const invalidEditRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/basics`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: creatorHeaders,
       body: JSON.stringify({
         title: 'Hacked Title While Funding',
         category: 'Environment',

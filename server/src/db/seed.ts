@@ -17,7 +17,12 @@ async function seed() {
   console.log('[Seed] Connecting to Neon PostgreSQL...');
   const db = getDb();
 
-  console.log('[Seed] Ensuring demo creator user exists...');
+  console.log('[Seed] Ensuring demo accounts (USER, REVIEWER, ADMIN) exist...');
+  const bcrypt = (await import('bcryptjs')).default;
+  const defaultPasswordHash = await bcrypt.hash('Password123!', 10);
+  const adminPasswordHash = await bcrypt.hash('AdminPassword123!', 10);
+
+  // 1. Creator / Backer (USER)
   const existingUsers = await db
     .select()
     .from(schema.users)
@@ -27,6 +32,10 @@ async function seed() {
   let userId: string;
   if (existingUsers.length > 0) {
     userId = existingUsers[0].id;
+    await db
+      .update(schema.users)
+      .set({ passwordHash: defaultPasswordHash, updatedAt: new Date() })
+      .where(eq(schema.users.id, userId as any));
     console.log(`[Seed] Found existing demo user with ID: ${userId}`);
   } else {
     const [insertedUser] = await db
@@ -35,10 +44,65 @@ async function seed() {
         email: DEMO_USER_EMAIL,
         displayName: 'Clean Water Action Network',
         role: 'USER',
+        passwordHash: defaultPasswordHash,
       })
       .returning();
     userId = insertedUser.id;
     console.log(`[Seed] Created demo user with ID: ${userId}`);
+  }
+
+  // 2. Demo Reviewer
+  const reviewerEmail = 'reviewer@campaignamplify.org';
+  const existingReviewer = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.email, reviewerEmail))
+    .limit(1);
+
+  if (existingReviewer.length > 0) {
+    await db
+      .update(schema.users)
+      .set({ passwordHash: defaultPasswordHash, role: 'REVIEWER', updatedAt: new Date() })
+      .where(eq(schema.users.id, existingReviewer[0].id as any));
+    console.log(`[Seed] Updated demo reviewer account: ${existingReviewer[0].id}`);
+  } else {
+    const [insertedReviewer] = await db
+      .insert(schema.users)
+      .values({
+        email: reviewerEmail,
+        displayName: 'Editorial Review Board',
+        role: 'REVIEWER',
+        passwordHash: defaultPasswordHash,
+      })
+      .returning();
+    console.log(`[Seed] Created demo reviewer account: ${insertedReviewer.id}`);
+  }
+
+  // 3. Demo Admin
+  const adminEmail = 'admin@campaignamplify.org';
+  const existingAdmin = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.email, adminEmail))
+    .limit(1);
+
+  if (existingAdmin.length > 0) {
+    await db
+      .update(schema.users)
+      .set({ passwordHash: adminPasswordHash, role: 'ADMIN', updatedAt: new Date() })
+      .where(eq(schema.users.id, existingAdmin[0].id as any));
+    console.log(`[Seed] Updated demo admin account: ${existingAdmin[0].id}`);
+  } else {
+    const [insertedAdmin] = await db
+      .insert(schema.users)
+      .values({
+        email: adminEmail,
+        displayName: 'Platform Administrator',
+        role: 'ADMIN',
+        passwordHash: adminPasswordHash,
+      })
+      .returning();
+    console.log(`[Seed] Created demo admin account: ${insertedAdmin.id}`);
   }
 
   console.log('[Seed] Upserting public demo campaigns with deterministic IDs...');

@@ -17,6 +17,7 @@ import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { formatCurrency } from '@/utils/formatters';
 import { Config } from '@/constants/config';
+import { useAuthStore } from '@/store/auth-store';
 
 const STEP_ROUTES: Record<number, string> = {
   1: '/create-campaign/basics',
@@ -40,6 +41,22 @@ export default function CreateEntryScreen() {
   const hasActiveDraft = hasDraft();
 
   const handleStartNewCampaign = () => {
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (Config.useApi && (!isAuthenticated || !user || user.isGuest)) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in or create an account to start creating campaigns.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Sign In',
+            onPress: () => router.push('/auth/login'),
+          },
+        ]
+      );
+      return;
+    }
+
     if (hasActiveDraft) {
       const title = 'Start a new campaign?';
       const message = 'Your current draft will be cleared.';
@@ -69,6 +86,11 @@ export default function CreateEntryScreen() {
   };
 
   const handleResumeDraft = () => {
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (Config.useApi && (!isAuthenticated || !user || user.isGuest)) {
+      router.push('/auth/login');
+      return;
+    }
     const targetRoute = STEP_ROUTES[draft.currentStep] || '/create-campaign/basics';
     router.push(targetRoute as Href);
   };

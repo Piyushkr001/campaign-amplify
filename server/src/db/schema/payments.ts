@@ -7,7 +7,9 @@ import {
   timestamp,
   pgEnum,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { contributions } from './contributions';
 
 export const paymentProviderEnum = pgEnum('payment_provider', ['DEMO']);
@@ -28,7 +30,7 @@ export const payments = pgTable(
       .references(() => contributions.id)
       .notNull(),
     provider: paymentProviderEnum('provider').default('DEMO').notNull(),
-    providerReference: text('provider_reference').notNull(),
+    providerReference: text('provider_reference').notNull().unique(),
     amount: integer('amount').notNull(),
     status: paymentStatusEnum('status').default('PENDING').notNull(),
     cardLast4: varchar('card_last4', { length: 4 }),
@@ -43,6 +45,9 @@ export const payments = pgTable(
     index('payments_contribution_id_idx').on(table.contributionId),
     index('payments_status_idx').on(table.status),
     index('payments_provider_reference_idx').on(table.providerReference),
+    uniqueIndex('payments_one_success_idx')
+      .on(table.contributionId)
+      .where(sql`${table.status} = 'SUCCESS'`),
   ]
 );
 

@@ -3,6 +3,8 @@ import { createApp } from './src/app';
 import { getDb, schema } from './src/db/index';
 import { eq } from 'drizzle-orm';
 import type { Server } from 'http';
+import { resolveDemoCreatorId, DEMO_CREATOR_EMAIL } from './src/utils/demo-identity';
+import { AuthService } from './src/modules/auth/auth.service';
 
 async function runTests() {
   console.log('========================================================');
@@ -17,6 +19,17 @@ async function runTests() {
   const BASE_URL = `http://localhost:${PORT}/api/v1`;
 
   let testCampaignId: string | null = null;
+
+  const creatorId = await resolveDemoCreatorId();
+  const token = AuthService.signToken({
+    sub: creatorId,
+    email: DEMO_CREATOR_EMAIL,
+    role: 'USER',
+  });
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
 
   try {
     // 1. Readiness Check
@@ -44,7 +57,7 @@ async function runTests() {
     console.log('\n[TEST 3] Testing Category Validation (Phase 5)...');
     const invalidCatDraftRes = await fetch(`${BASE_URL}/campaigns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ title: 'Invalid Category Test' }),
     });
     const invalidCatDraftJson = await invalidCatDraftRes.json();
@@ -54,7 +67,7 @@ async function runTests() {
     try {
       const invalidCatRes = await fetch(`${BASE_URL}/campaigns/${tempUuid}/basics`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           title: 'Clean Water Project',
           category: 'BANANA', // Arbitrary invalid category
@@ -75,7 +88,7 @@ async function runTests() {
     console.log('\n[TEST 4] Testing Step A: POST /campaigns (Server Draft Creation)...');
     const createRes = await fetch(`${BASE_URL}/campaigns`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ title: 'Sync Hardening Clean Water Campaign' }),
     });
     assert.equal(createRes.status, 201, 'Draft creation must return 201');
@@ -99,7 +112,7 @@ async function runTests() {
     console.log('\n[TEST 5] Testing Step B: PATCH /basics...');
     const basicsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/basics`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         title: 'Sync Hardening Clean Water Campaign',
         category: 'Environment',
@@ -117,7 +130,7 @@ async function runTests() {
     console.log('\n[TEST 6] Testing Step C: PATCH /story...');
     const storyRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         storyHeadline: 'Freshwater Access For Underrepresented Districts',
         storyIntro: 'Connecting underserved communities with gravity filtration blueprints.',
@@ -140,7 +153,7 @@ async function runTests() {
     console.log('\n[TEST 7] Testing Step D: PATCH /visuals...');
     const visualsRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/visuals`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         adHeadline: 'Safe Drinking Water Blueprint',
         adDescription: 'Help fund advertising to bring freshwater blueprints to rural villages.',
@@ -157,7 +170,7 @@ async function runTests() {
     console.log('\n[TEST 8] Testing Step E: PATCH /reach...');
     const reachRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/reach`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         locations: ['India', 'Delhi NCR', 'Rural Districts'],
         interests: ['Clean Water', 'Public Infrastructure', 'Sustainability'],
@@ -175,7 +188,7 @@ async function runTests() {
     console.log('\n[TEST 9] Testing Step F: POST /submit...');
     const submitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ fundingGoal: 3500 }),
     });
     assert.equal(submitRes.status, 200, 'Submit must return 200');
@@ -224,7 +237,7 @@ async function runTests() {
     // Creator edits story during revision
     const revStoryRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/story`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         storyHeadline: 'REVISED: Freshwater Access For Underrepresented Districts',
         storyIntro: 'Updated introduction connecting underserved communities with gravity filtration blueprints.',
@@ -248,7 +261,7 @@ async function runTests() {
     // Resubmit
     const resubmitRes = await fetch(`${BASE_URL}/campaigns/${testCampaignId}/submit`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ fundingGoal: 4000 }),
     });
     assert.equal(resubmitRes.status, 200, 'Resubmission must succeed with 200');

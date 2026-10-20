@@ -86,58 +86,140 @@ export const ContributionRepository = {
 
     try {
       const db = getDb();
-      const campaignRows = await db
-        .select()
-        .from(schema.campaigns)
-        .where(eq(schema.campaigns.id, params.campaignId as any))
-        .limit(1);
+      return await db.transaction(async (tx) => {
+        const campaignRows = await tx
+          .select()
+          .from(schema.campaigns)
+          .where(eq(schema.campaigns.id, params.campaignId as any))
+          .limit(1);
 
-      const campaign = campaignRows[0];
-      if (!campaign) {
-        throw new NotFoundError(`Campaign "${params.campaignId}" not found.`);
-      }
+        const campaign = campaignRows[0];
+        if (!campaign) {
+          throw new NotFoundError(`Campaign "${params.campaignId}" not found.`);
+        }
 
-      if (campaign.status !== 'FUNDING') {
-        throw new CampaignNotBackableError(
-          `Cannot contribute to campaign in "${campaign.status}" state. Only campaigns in FUNDING can be backed.`
+        if (campaign.status !== 'FUNDING') {
+          throw new CampaignNotBackableError(
+            `Cannot contribute to campaign in "${campaign.status}" state. Only campaigns in FUNDING can be backed.`
+          );
+        }
+
+        // Calculate quote directly from verified campaign policy
+        const advertising = Math.round(
+          params.amount * (CAMPAIGN_POLICY.advertisingPercentage / 100)
         );
-      }
+        const platformFee = Math.round(
+          params.amount * (CAMPAIGN_POLICY.platformPercentage / 100)
+        );
+        const processingFee = params.amount - advertising - platformFee;
+        const estimatedImpressionsMin = Math.round(
+          advertising * CAMPAIGN_POLICY.impressionsPerDollarMin
+        );
+        const estimatedImpressionsMax = Math.round(
+          advertising * CAMPAIGN_POLICY.impressionsPerDollarMax
+        );
 
-      const now = new Date();
-      const [inserted] = await db
-        .insert(schema.contributions)
-        .values({
-          campaignId: params.campaignId as any,
-          userId: (params.userId as any) || null,
-          amount: params.amount,
-          status: 'PENDING',
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
+        const now = new Date();
+        const [inserted] = await tx
+          .insert(schema.contributions)
+          .values({
+            campaignId: params.campaignId as any,
+            userId: (params.userId as any) || null,
+            amount: params.amount,
+            status: 'PENDING',
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
 
-      const quote = await ContributionRepository.calculateQuote(params.campaignId, params.amount);
-
-      return {
-        id: inserted.id,
-        campaignId: inserted.campaignId,
-        userId: inserted.userId,
-        amount: inserted.amount,
-        status: inserted.status,
-        createdAt: inserted.createdAt.toISOString(),
-        quote: {
-          advertisingAllocation: quote.advertisingAllocation,
-          platformFee: quote.platformFee,
-          processingFee: quote.processingFee,
-          estimatedImpressionsMin: quote.estimatedImpressionsMin,
-          estimatedImpressionsMax: quote.estimatedImpressionsMax,
-          currency: quote.currency,
-        },
-      };
+        return {
+          id: inserted.id,
+          campaignId: inserted.campaignId,
+          userId: inserted.userId,
+          amount: inserted.amount,
+          status: inserted.status,
+          createdAt: inserted.createdAt.toISOString(),
+          quote: {
+            advertisingAllocation: advertising,
+            platformFee,
+            processingFee,
+            estimatedImpressionsMin,
+            estimatedImpressionsMax,
+            currency: 'USD',
+          },
+        };
+      });
     } catch (err) {
       if (err instanceof NotFoundError || err instanceof CampaignNotBackableError) throw err;
       console.error('[ContributionRepository] Error in createPending:', err);
       throw new DatabaseUnavailableError('Failed to create contribution record.');
+    }
+  },
+
+  cancelPending: async (
+    contributionId: string,
+    actorUserId?: string
+  ): Promise<{ id: string; status: string; cancelledAt: string }> => {
+    if (!env.DATABASE_URL) {
+      throw new DatabaseUnavailableError('Database is not configured.');
+    }
+
+    try {
+      const db = getDb();
+      return await db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(schema.contributions)
+          .where(eq(schema.contributions.id, contributionId as any))
+          .limit(1);
+
+        const contribution = rows[0];
+        if (!contribution) {
+          throw new NotFoundError(`Contribution "${contributionId}" not found.`);
+        }
+
+        if (actorUserId && contribution.userId && contribution.userId !== actorUserId) {
+          throw new ForbiddenError(
+            'You do not have permission to cancel this contribution.',
+            'CONTRIBUTION_ACCESS_DENIED'
+          );
+        }
+
+        if (contribution.status !== 'PENDING') {
+          throw new BadRequestError(
+            `Cannot cancel contribution with status "${contribution.status}". Only PENDING contributions can be cancelled.`,
+            'CONTRIBUTION_NOT_PENDING'
+          );
+        }
+
+        const now = new Date();
+        const [updated] = await tx
+          .update(schema.contributions)
+          .set({
+            status: 'CANCELLED',
+            cancelledAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.contributions.id, contributionId as any),
+              eq(schema.contributions.status, 'PENDING')
+            )
+          )
+          .returning();
+
+        return {
+          id: updated.id,
+          status: updated.status,
+          cancelledAt: now.toISOString(),
+        };
+      });
+    } catch (err) {
+      if (err instanceof NotFoundError || err instanceof ForbiddenError || err instanceof BadRequestError) {
+        throw err;
+      }
+      console.error('[ContributionRepository] Error in cancelPending:', err);
+      throw new DatabaseUnavailableError('Failed to cancel contribution.');
     }
   },
 
