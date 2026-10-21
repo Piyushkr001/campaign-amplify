@@ -8,6 +8,7 @@ import { reviewRouter } from './modules/reviews/review.routes';
 import { myContributionsRouter } from './modules/contributions/contribution.routes';
 import { paymentsRouter } from './modules/payments/payment.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { activityRouter } from './modules/activity/activity.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { apiSuccess } from './utils/response';
@@ -75,6 +76,7 @@ export function createApp(): Express {
   app.use('/api/v1/review/campaigns', reviewRouter);
   app.use('/api/v1/me/contributions', myContributionsRouter);
   app.use('/api/v1/payments', paymentsRouter);
+  app.use('/api/v1/me/activity', activityRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

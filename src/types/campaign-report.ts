@@ -1,4 +1,5 @@
 export interface CampaignChannelResult {
+  id?: string;
   channel: string;
   spend: number;
   impressions: number;
@@ -11,6 +12,7 @@ export interface CampaignReport {
   id: string;
   campaignId: string;
   campaignTitle: string;
+  reportStatus?: 'INTERIM' | 'FINAL';
   fundsRaised: number;
   advertisingAllocation: number; // 85% of raised funds
   advertisingSpend: number;
@@ -24,7 +26,9 @@ export interface CampaignReport {
   ctr?: number;
   durationDays: number;
   channelResults: CampaignChannelResult[];
-  startedAt?: string;
-  completedAt?: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  generatedAt?: string;
+  disclaimer?: string;
   isDemoData: boolean;
 }

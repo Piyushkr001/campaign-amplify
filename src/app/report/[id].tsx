@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Palette } from '@/constants/colors';
@@ -10,6 +10,7 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { AppButton } from '@/components/ui/AppButton';
 import { useCampaign } from '@/hooks/useCampaigns';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
+import { useCampaignReport } from '@/hooks/useReport';
 import { getOrGenerateCampaignReport } from '@/data/campaign-reports';
 import { ReportMetricCard } from '@/components/report/ReportMetricCard';
 import { ChannelResultCard } from '@/components/report/ChannelResultCard';
@@ -24,6 +25,19 @@ export default function CampaignReportScreen() {
   const { data: publicCampaign } = useCampaign(id || '');
   const userCampaign = useMyCampaignsStore((s) => s.campaigns.find((c) => c.id === id));
   const campaign = publicCampaign || userCampaign;
+
+  // Access rules: reports are only available for PROMOTING or COMPLETED campaigns
+  const hasDistribution =
+    Boolean(campaign) && (campaign!.status === 'PROMOTING' || campaign!.status === 'COMPLETED');
+
+  // Server-backed report in API mode
+  const isApiEnabled = Config.useApi && Boolean(campaign?.id) && hasDistribution;
+  const {
+    data: apiReport,
+    isLoading: isReportLoading,
+    isError: isReportError,
+    refetch: refetchReport,
+  } = useCampaignReport(campaign?.id || '', isApiEnabled);
 
   if (!campaign) {
     return (
@@ -52,9 +66,6 @@ export default function CampaignReportScreen() {
       </ScreenContainer>
     );
   }
-
-  // Access rules: reports are only available for PROMOTING or COMPLETED campaigns
-  const hasDistribution = campaign.status === 'PROMOTING' || campaign.status === 'COMPLETED';
 
   if (!hasDistribution) {
     return (
@@ -95,8 +106,58 @@ export default function CampaignReportScreen() {
     );
   }
 
-  // Fetch or generate mathematical prototype report
-  const report = getOrGenerateCampaignReport(campaign);
+  // Loading state in API mode
+  if (Config.useApi && isReportLoading && !apiReport) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+          <Text style={styles.navTitle}>Campaign Report</Text>
+          <View style={styles.spacer} />
+        </View>
+
+        <View style={styles.loadingCard}>
+          <ActivityIndicator size="large" color={Palette.primary700} />
+          <Text style={styles.loadingText}>Loading campaign distribution report...</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  // Error state in API mode (when no cached data exists)
+  if (Config.useApi && isReportError && !apiReport) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navHeader}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+          <Text style={styles.navTitle}>Campaign Report</Text>
+          <View style={styles.spacer} />
+        </View>
+
+        <View style={styles.emptyCard}>
+          <Ionicons name="alert-circle-outline" size={48} color={Palette.amber600} />
+          <Text style={styles.emptyTitle}>Unable to Load Report</Text>
+          <Text style={styles.emptyText}>
+            We encountered a problem retrieving the distribution report from the server.
+          </Text>
+          <AppButton
+            title="Retry"
+            onPress={() => refetchReport()}
+            variant="primary"
+            size="md"
+          />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  // Fetch or generate mathematical prototype report (API report in API mode, deterministic local fallback in local mode)
+  const localReport = getOrGenerateCampaignReport(campaign);
+  const report = (Config.useApi && apiReport) ? apiReport : localReport;
   const isInterim = campaign.status === 'PROMOTING';
   const unspentBudget = Math.max(0, report.advertisingAllocation - report.advertisingSpend);
 
@@ -607,6 +668,22 @@ const styles = StyleSheet.create({
   emptyText: {
     ...Typography.bodySmall,
     color: Palette.neutral500,
+    textAlign: 'center',
+  },
+  loadingCard: {
+    backgroundColor: Palette.pureWhite,
+    borderRadius: BorderRadius.card,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.xl,
+    gap: Spacing.md,
+  },
+  loadingText: {
+    ...Typography.bodySmall,
+    color: Palette.neutral600,
     textAlign: 'center',
   },
 });

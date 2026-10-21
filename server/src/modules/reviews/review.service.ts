@@ -1,7 +1,6 @@
 import { ReviewRepository } from './review.repository';
 import { ReviewQueueQuery } from './review.schemas';
 import { ReviewerCampaignListDTO, ReviewerCampaignDetailDTO } from './review.types';
-import { resolveDemoReviewerId } from '../../utils/demo-identity';
 
 export const ReviewService = {
   getQueue: async (query?: ReviewQueueQuery): Promise<ReviewerCampaignListDTO[]> => {
@@ -12,28 +11,23 @@ export const ReviewService = {
     return ReviewRepository.findCampaignById(campaignId);
   },
 
-  startReview: async (campaignId: string, actorUserId?: string) => {
-    const reviewerId = actorUserId || (await resolveDemoReviewerId());
-    return ReviewRepository.startReview(campaignId, reviewerId);
+  startReview: async (campaignId: string, actorUserId: string) => {
+    return ReviewRepository.startReview(campaignId, actorUserId);
   },
 
-  requestChanges: async (campaignId: string, feedback: string, actorUserId?: string) => {
-    const reviewerId = actorUserId || (await resolveDemoReviewerId());
-    return ReviewRepository.requestChanges(campaignId, reviewerId, feedback);
+  requestChanges: async (campaignId: string, feedback: string, actorUserId: string) => {
+    return ReviewRepository.requestChanges(campaignId, actorUserId, feedback);
   },
 
-  approve: async (campaignId: string, note?: string, actorUserId?: string) => {
-    const reviewerId = actorUserId || (await resolveDemoReviewerId());
-    return ReviewRepository.approve(campaignId, reviewerId, note);
+  approve: async (campaignId: string, note: string | undefined, actorUserId: string) => {
+    return ReviewRepository.approve(campaignId, actorUserId, note);
   },
 
-  reject: async (campaignId: string, reason: string, actorUserId?: string) => {
-    const reviewerId = actorUserId || (await resolveDemoReviewerId());
-    return ReviewRepository.reject(campaignId, reviewerId, reason);
+  reject: async (campaignId: string, reason: string, actorUserId: string) => {
+    return ReviewRepository.reject(campaignId, actorUserId, reason);
   },
 
-  startFunding: async (campaignId: string, note?: string, actorUserId?: string) => {
-    const reviewerId = actorUserId || (await resolveDemoReviewerId());
-    return ReviewRepository.startFunding(campaignId, reviewerId, note);
+  startFunding: async (campaignId: string, note: string | undefined, actorUserId: string) => {
+    return ReviewRepository.startFunding(campaignId, actorUserId, note);
   },
 };

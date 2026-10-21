@@ -406,6 +406,102 @@ cd server
 bun run test:contribution
 ```
 
+### 7. Server-Backed Activity Stream Suite
+```bash
+cd server
+bun run test:activity
+```
+Verifies `GET /api/v1/me/activity` authenticated endpoint, chronological event ordering (newest first), event types derived from status history and contribution payments, actor data isolation (backers only see their own contributions, no creator drafts), and pagination.
+
+### 8. Post-Funding Distribution & Promotion Lifecycle Suite
+```bash
+cd server
+bun run test:distribution
+```
+Tests the complete post-funding state machine: `FUNDING` → `FUNDING_GOAL_REACHED` / `FUNDING_ENDED` → `DISTRIBUTION_PREPARATION` → `PROMOTING` → `COMPLETED` / `FAILED`. Enforces reviewer/admin authorization, status history logging, lifecycle conflict safety, and timestamp setting.
+
+### 9. Server-Backed Campaign Reports Suite
+```bash
+cd server
+bun run test:report
+```
+Validates availability guards (rejects `DRAFT` with 400), deterministic simulation generation, mathematical budget consistency (85% ad allocation, spend ≤ allocation), channel consistency matching targeting, and Neon PostgreSQL persistence in `campaign_reports` and `campaign_channel_results`.
+
+### 10. Run All Test Suites
+```bash
+cd server
+bun run test:all
+```
+Executes all 9 integration suites sequentially against live Neon PostgreSQL.
+
+---
+
+## 📡 Server-Backed Activity Architecture
+
+The Activity domain (`server/src/modules/activity/`) provides a unified, chronological activity feed for authenticated users at `GET /api/v1/me/activity`.
+
+- **Event Sources**: Derived dynamically from authoritative PostgreSQL records:
+  - `campaign_status_history` for lifecycle transitions
+  - `contributions` for backed campaigns
+  - `payments` for confirmed/failed payment attempts
+  - `campaign_reviews` for review milestones
+- **Ownership & Privacy**:
+  - Creators see all lifecycle events for their owned campaigns.
+  - Backers see contribution milestones and public campaign progress (goal reached, promoting, completed) for campaigns they supported.
+  - Non-owners never receive private draft or editorial notes.
+- **Explicit Event Types**:
+  - `CAMPAIGN_DRAFT_CREATED`
+  - `CAMPAIGN_SUBMITTED`
+  - `REVIEW_STARTED`
+  - `CHANGES_REQUESTED`
+  - `CAMPAIGN_APPROVED`
+  - `CAMPAIGN_REJECTED`
+  - `FUNDING_STARTED`
+  - `CONTRIBUTION_CONFIRMED`
+  - `PAYMENT_FAILED`
+  - `FUNDING_GOAL_REACHED`
+  - `FUNDING_ENDED`
+  - `DISTRIBUTION_PREPARATION_STARTED`
+  - `PROMOTION_STARTED`
+  - `CAMPAIGN_COMPLETED`
+  - `CAMPAIGN_FAILED`
+
+---
+
+## 🚦 Post-Funding Distribution & Promotion Lifecycle
+
+Post-funding transitions are managed through server-backed endpoints guarded by `REVIEWER` / `ADMIN` roles:
+
+| Endpoint | Method | Allowed From | Target Status | Timestamp Set |
+|---|---|---|---|---|
+| `/campaigns/:id/end-funding` | `POST` | `FUNDING` | `FUNDING_ENDED` | `fundingEndedAt` |
+| `/campaigns/:id/prepare-distribution` | `POST` | `FUNDING_GOAL_REACHED`, `FUNDING_ENDED` | `DISTRIBUTION_PREPARATION` | `distributionPreparationAt` |
+| `/campaigns/:id/start-promotion` | `POST` | `DISTRIBUTION_PREPARATION` | `PROMOTING` | `promotionStartedAt` |
+| `/campaigns/:id/complete` | `POST` | `PROMOTING` | `COMPLETED` | `completedAt` |
+| `/campaigns/:id/fail` | `POST` | `PROMOTING` | `FAILED` | `failedAt` |
+
+All state modifications execute through the concurrency-safe `transitionCampaign()` transaction helper, preventing race conditions and appending immutable audit records to `campaign_status_history`.
+
+---
+
+## 📊 Campaign Report Backend & Deterministic Simulation Engine
+
+Campaign Reports (`server/src/modules/reports/`) are persisted in Neon PostgreSQL across two relational tables:
+- `campaign_reports`: Aggregate campaign metrics, spend, reach, impressions, fees, and timestamps.
+- `campaign_channel_results`: Channel-level breakdowns (spend, impressions, reach, clicks, CTR).
+
+### Key Rules & Invariants:
+1. **Simulated Prototype Disclaimer**: As no production Meta Ads or Google Ads API integrations exist yet, all generated reports are transparently labeled with `isDemoData: true` and an explicit disclaimer.
+2. **Availability**: Reports become available only when a campaign reaches `PROMOTING` (interim progress report) or `COMPLETED` (final distribution report). Earlier lifecycle states reject report requests with HTTP 400 `REPORT_NOT_AVAILABLE`.
+3. **Deterministic Generation**: Generated metrics use a seeded pseudo-random hash algorithm based on immutable campaign inputs (`campaignId`, `amountRaised`, `channels`, `durationDays`). The same campaign always generates identical metrics across refreshes and restarts.
+4. **Budget & Mathematical Consistency**:
+   - Advertising Allocation = 85% of amount raised (Platform fee: 10%, Processing fee: 5%).
+   - Total Channel Spend = Advertising Spend ≤ Advertising Allocation.
+   - Measured Reach ≤ Measured Impressions.
+   - Clicks ≤ Measured Impressions.
+   - CTR = (Clicks / Measured Impressions) × 100.
+   - Channels match the campaign's actual targeting channels.
+
 ---
 
 ## 📋 Available Commands (Bun Only)
@@ -414,15 +510,20 @@ bun run test:contribution
 bun expo start                        # Start Metro bundler
 bunx tsc --noEmit                     # Mobile TypeScript check (100% clean)
 cd server && bun run typecheck        # Server TypeScript check (100% clean)
+cd server && bun run test:all         # Run all 9 integration test suites
 cd server && bun run test:auth        # Run auth & RBAC integration test
 cd server && bun run test:terminal-race # Run SUCCESS vs CANCELLED race test
 cd server && bun run test:idempotency # Run financial idempotency test
 cd server && bun run test:sync        # Run campaign step sync test
 cd server && bun run test:lifecycle   # Run review lifecycle test
 cd server && bun run test:contribution # Run contribution lifecycle test
+cd server && bun run test:activity    # Run server-backed activity test
+cd server && bun run test:distribution # Run distribution lifecycle test
+cd server && bun run test:report      # Run campaign report test
 bun run db:migrate                    # Run Drizzle migrations
 bun run db:studio                     # Launch Drizzle Studio
 bun run db:seed                       # Populate idempotent demo data (dev only)
 bun run server                        # Start backend dev server
 ```
+
 

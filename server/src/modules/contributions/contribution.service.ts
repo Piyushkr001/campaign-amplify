@@ -1,5 +1,4 @@
 import { ContributionRepository } from './contribution.repository';
-import { resolveDemoBackerId } from '../../utils/demo-identity';
 
 export const ContributionService = {
   getQuote: async (campaignId: string, amount: number) => {
@@ -9,33 +8,28 @@ export const ContributionService = {
   createContribution: async (params: {
     campaignId: string;
     amount: number;
-    actorUserId?: string;
+    actorUserId: string;
   }) => {
-    const userId = params.actorUserId || (await resolveDemoBackerId());
     return ContributionRepository.createPending({
       campaignId: params.campaignId,
-      userId,
+      userId: params.actorUserId,
       amount: params.amount,
     });
   },
 
-  getMyContributions: async (actorUserId?: string) => {
-    const userId = actorUserId || (await resolveDemoBackerId());
-    return ContributionRepository.findUserContributions(userId);
+  getMyContributions: async (actorUserId: string) => {
+    return ContributionRepository.findUserContributions(actorUserId);
   },
 
-  getMyContributionById: async (id: string, actorUserId?: string) => {
-    const userId = actorUserId || (await resolveDemoBackerId());
-    return ContributionRepository.findDetailById(id, userId);
+  getMyContributionById: async (id: string, actorUserId: string) => {
+    return ContributionRepository.findDetailById(id, actorUserId);
   },
 
-  getMyReceipt: async (id: string, actorUserId?: string) => {
-    const userId = actorUserId || (await resolveDemoBackerId());
-    return ContributionRepository.findReceipt(id, userId);
+  getMyReceipt: async (id: string, actorUserId: string) => {
+    return ContributionRepository.findReceipt(id, actorUserId);
   },
 
-  cancelContribution: async (id: string, actorUserId?: string) => {
-    const userId = actorUserId || (await resolveDemoBackerId());
-    return ContributionRepository.cancelPending(id, userId);
+  cancelContribution: async (id: string, actorUserId: string) => {
+    return ContributionRepository.cancelPending(id, actorUserId);
   },
 };

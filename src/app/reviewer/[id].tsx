@@ -224,15 +224,19 @@ export default function ReviewerDetailScreen() {
 
   const handleEndFunding = () => {
     Alert.alert(
-      'End Funding Period (Demo)',
+      Config.useApi ? 'End Funding Period' : 'End Funding Period (Demo)',
       'This concludes public backer contributions and transitions the campaign to FUNDING_ENDED.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'End Funding',
-          onPress: () => {
-            endFundingPeriod(campaign.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          onPress: async () => {
+            try {
+              await ReviewerService.endFunding(campaign.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (err: any) {
+              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to end funding period.');
+            }
           },
         },
       ]
@@ -241,15 +245,19 @@ export default function ReviewerDetailScreen() {
 
   const handleAdvanceToDistribution = () => {
     Alert.alert(
-      'Advance to Distribution Preparation (Demo)',
+      Config.useApi ? 'Advance to Distribution Preparation' : 'Advance to Distribution Preparation (Demo)',
       'Ad creative and audience parameters will be configured for network deployment.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Advance to Prep',
-          onPress: () => {
-            advanceToDistributionPrep(campaign.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          onPress: async () => {
+            try {
+              await ReviewerService.prepareDistribution(campaign.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (err: any) {
+              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to advance to distribution.');
+            }
           },
         },
       ]
@@ -258,15 +266,19 @@ export default function ReviewerDetailScreen() {
 
   const handleLaunchPromotion = () => {
     Alert.alert(
-      'Launch Live Advertising (Demo)',
-      'This transitions the campaign to PROMOTING, simulating active message delivery across selected channels.',
+      Config.useApi ? 'Launch Live Advertising' : 'Launch Live Advertising (Demo)',
+      'This transitions the campaign to PROMOTING, activating message delivery across selected channels.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Launch Promotion',
-          onPress: () => {
-            launchLivePromotion(campaign.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          onPress: async () => {
+            try {
+              await ReviewerService.startPromotion(campaign.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (err: any) {
+              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to launch promotion.');
+            }
           },
         },
       ]
@@ -275,20 +287,25 @@ export default function ReviewerDetailScreen() {
 
   const handleCompletePromotion = () => {
     Alert.alert(
-      'Complete Distribution Run (Demo)',
+      Config.useApi ? 'Complete Distribution Run' : 'Complete Distribution Run (Demo)',
       'Concludes message distribution and finalizes the Campaign Report.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Complete Campaign',
-          onPress: () => {
-            completeCampaign(campaign.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          onPress: async () => {
+            try {
+              await ReviewerService.completePromotion(campaign.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } catch (err: any) {
+              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to complete campaign.');
+            }
           },
         },
       ]
     );
   };
+
 
   const handleOpenLink = async (url: string) => {
     if (!url || !url.startsWith('http')) return;
@@ -430,15 +447,13 @@ export default function ReviewerDetailScreen() {
                 </Text>
               </View>
             </View>
-            {!Config.useApi && (
-              <AppButton
-                title="Demo: End Funding Period"
-                onPress={handleEndFunding}
-                variant="outline"
-                size="md"
-                icon={<Ionicons name="time-outline" size={16} color={Palette.navy900} />}
-              />
-            )}
+            <AppButton
+              title={Config.useApi ? "End Funding Period" : "Demo: End Funding Period"}
+              onPress={handleEndFunding}
+              variant="outline"
+              size="md"
+              icon={<Ionicons name="time-outline" size={16} color={Palette.navy900} />}
+            />
           </View>
         )}
 
@@ -450,15 +465,13 @@ export default function ReviewerDetailScreen() {
                 Funding concluded! Ready to configure advertising targeting parameters.
               </Text>
             </View>
-            {!Config.useApi && (
-              <AppButton
-                title="Demo: Advance to Distribution Prep"
-                onPress={handleAdvanceToDistribution}
-                variant="primary"
-                size="md"
-                icon={<Ionicons name="hardware-chip-outline" size={16} color={Palette.pureWhite} />}
-              />
-            )}
+            <AppButton
+              title={Config.useApi ? "Advance to Distribution Prep" : "Demo: Advance to Distribution Prep"}
+              onPress={handleAdvanceToDistribution}
+              variant="primary"
+              size="md"
+              icon={<Ionicons name="hardware-chip-outline" size={16} color={Palette.pureWhite} />}
+            />
           </View>
         )}
 
@@ -470,15 +483,13 @@ export default function ReviewerDetailScreen() {
                 Distribution accounts staged. Deploy creative to live advertising networks.
               </Text>
             </View>
-            {!Config.useApi && (
-              <AppButton
-                title="Demo: Launch Live Promotion"
-                onPress={handleLaunchPromotion}
-                variant="primary"
-                size="md"
-                icon={<Ionicons name="megaphone-outline" size={16} color={Palette.pureWhite} />}
-              />
-            )}
+            <AppButton
+              title={Config.useApi ? "Launch Live Promotion" : "Demo: Launch Live Promotion"}
+              onPress={handleLaunchPromotion}
+              variant="primary"
+              size="md"
+              icon={<Ionicons name="megaphone-outline" size={16} color={Palette.pureWhite} />}
+            />
           </View>
         )}
 
@@ -499,19 +510,17 @@ export default function ReviewerDetailScreen() {
                 onPress={() => router.push(`/report/${campaign.id}`)}
                 variant="outline"
                 size="md"
-                style={!Config.useApi ? styles.actionBtnHalf : { flex: 1 }}
+                style={styles.actionBtnHalf}
                 icon={<Ionicons name="analytics-outline" size={16} color={Palette.navy900} />}
               />
-              {!Config.useApi && (
-                <AppButton
-                  title="Demo: Complete"
-                  onPress={handleCompletePromotion}
-                  variant="primary"
-                  size="md"
-                  style={styles.actionBtnHalf}
-                  icon={<Ionicons name="checkmark-done" size={16} color={Palette.pureWhite} />}
-                />
-              )}
+              <AppButton
+                title={Config.useApi ? "Complete Campaign" : "Demo: Complete"}
+                onPress={handleCompletePromotion}
+                variant="primary"
+                size="md"
+                style={styles.actionBtnHalf}
+                icon={<Ionicons name="checkmark-done" size={16} color={Palette.pureWhite} />}
+              />
             </View>
           </View>
         )}

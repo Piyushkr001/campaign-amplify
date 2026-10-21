@@ -70,6 +70,7 @@ export const useAuthStore = create<AuthStoreState>((set) => {
       try {
         const persistedToken = await getPersistedToken();
         if (!persistedToken) {
+          clearPrivateClientState();
           set({
             user: AuthService.getGuestUser(),
             isAuthenticated: false,

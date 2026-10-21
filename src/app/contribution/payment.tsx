@@ -17,6 +17,7 @@ import { Palette } from '@/constants/colors';
 import { BorderRadius, Spacing } from '@/constants/spacing';
 import { Typography } from '@/constants/typography';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppInput } from '@/components/ui/AppInput';
 import { useCampaign } from '@/hooks/useCampaigns';
@@ -30,14 +31,40 @@ import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 import { Config } from '@/constants/config';
 import { ContributionService } from '@/services/contribution.service';
+import { useAuthStore } from '@/store/auth-store';
 
 export default function SimulatedPaymentScreen() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuthStore();
   const { campaignId, amount, contributionId } = useLocalSearchParams<{
     campaignId: string;
     amount?: string;
     contributionId?: string;
   }>();
+
+  if (Config.useApi && (!isAuthenticated || user?.isGuest)) {
+    return (
+      <ScreenContainer scrollable paddingHorizontal backgroundColor={Palette.warmWhite}>
+        <View style={styles.navRow}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={8}
+            style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={Palette.navy950} />
+          </Pressable>
+        </View>
+        <EmptyState
+          iconName="lock-closed-outline"
+          title="Sign In Required"
+          description="Sign in to complete payment and receive your official campaign receipt."
+          actionTitle="Sign In"
+          onAction={() => router.push('/auth/login')}
+        />
+      </ScreenContainer>
+    );
+  }
 
   const { data: campaign } = useCampaign(campaignId || '');
   const {

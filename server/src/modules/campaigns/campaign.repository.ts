@@ -28,7 +28,6 @@ import {
 import { canEditCampaign, canSubmitCampaign } from './campaign.lifecycle';
 import { transitionCampaign } from './campaign.transition';
 import { CAMPAIGN_POLICY } from '../../config/campaign-policy';
-import { resolveDemoCreatorId } from '../../utils/demo-identity';
 
 // Seed fallback data for when DATABASE_URL is completely unset locally
 const FALLBACK_PUBLIC_CAMPAIGNS: CampaignDetailDTO[] = [
@@ -182,26 +181,7 @@ const FALLBACK_PUBLIC_CAMPAIGNS: CampaignDetailDTO[] = [
   },
 ];
 
-let cachedDemoUserId: string | null = null;
-async function resolveDemoUserId(): Promise<string | undefined> {
-  if (cachedDemoUserId) return cachedDemoUserId;
-  if (!env.DATABASE_URL) return undefined;
-  try {
-    const db = getDb();
-    const rows = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.email, 'creator@campaignamplify.org'))
-      .limit(1);
-    if (rows.length > 0) {
-      cachedDemoUserId = rows[0].id;
-      return cachedDemoUserId;
-    }
-  } catch (err) {
-    console.warn('[CampaignRepository] Could not resolve demo user:', err);
-  }
-  return undefined;
-}
+
 
 export const CampaignRepository = {
   /**
@@ -564,13 +544,13 @@ export const CampaignRepository = {
   /**
    * Creates a new initial campaign draft.
    */
-  createDraft: async (input: CreateDraftInput, actorUserId?: string): Promise<{ id: string; status: string }> => {
+  createDraft: async (input: CreateDraftInput, actorUserId: string): Promise<{ id: string; status: string }> => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign creation.');
     }
     try {
       const db = getDb();
-      const userId = actorUserId || (await resolveDemoCreatorId());
+      const userId = actorUserId;
       const now = new Date();
 
       let createdCamp: typeof schema.campaigns.$inferSelect;
@@ -616,7 +596,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 1: Basics.
    */
-  updateBasics: async (id: string, input: UpdateBasicsInput, actorUserId?: string) => {
+  updateBasics: async (id: string, input: UpdateBasicsInput, actorUserId: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -661,7 +641,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 2: Story and sources atomically in a database transaction.
    */
-  updateStory: async (id: string, input: UpdateStoryInput, actorUserId?: string) => {
+  updateStory: async (id: string, input: UpdateStoryInput, actorUserId: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -724,7 +704,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 3: Visuals & Ad Creative.
    */
-  updateVisuals: async (id: string, input: UpdateVisualsInput, actorUserId?: string) => {
+  updateVisuals: async (id: string, input: UpdateVisualsInput, actorUserId: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -790,7 +770,7 @@ export const CampaignRepository = {
   /**
    * Updates Step 4: Reach & Distribution Preferences.
    */
-  updateReach: async (id: string, input: UpdateReachInput, actorUserId?: string) => {
+  updateReach: async (id: string, input: UpdateReachInput, actorUserId: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign updates.');
     }
@@ -853,7 +833,7 @@ export const CampaignRepository = {
   /**
    * Validates full campaign completeness and submits for review in a transaction.
    */
-  submitCampaign: async (id: string, input: SubmitCampaignInput, actorUserId?: string) => {
+  submitCampaign: async (id: string, input: SubmitCampaignInput, actorUserId: string) => {
     if (!env.DATABASE_URL) {
       throw new DatabaseUnavailableError('Database is not configured for campaign submission.');
     }
@@ -945,7 +925,7 @@ export const CampaignRepository = {
       }
 
       // Step 5: Execute atomic submission transition via central lifecycle helper
-      const userId = actorUserId || (await resolveDemoCreatorId());
+      const userId = actorUserId;
       const updatedCamp = await transitionCampaign({
         campaignId: id,
         nextStatus: 'SUBMITTED_FOR_REVIEW',
@@ -970,4 +950,70 @@ export const CampaignRepository = {
       throw new DatabaseUnavailableError('Failed to submit campaign for review.');
     }
   },
+
+  /**
+   * Concludes funding period before goal reached (FUNDING -> FUNDING_ENDED)
+   */
+  endFunding: async (id: string, actorUserId: string, note?: string) => {
+    return transitionCampaign({
+      campaignId: id,
+      nextStatus: 'FUNDING_ENDED',
+      actorType: 'REVIEWER',
+      actorId: actorUserId,
+      note: note || 'Funding period ended by reviewer/system.',
+    });
+  },
+
+  /**
+   * Advances campaign to distribution preparation (FUNDING_GOAL_REACHED / FUNDING_ENDED -> DISTRIBUTION_PREPARATION)
+   */
+  prepareDistribution: async (id: string, actorUserId: string, note?: string) => {
+    return transitionCampaign({
+      campaignId: id,
+      nextStatus: 'DISTRIBUTION_PREPARATION',
+      actorType: 'REVIEWER',
+      actorId: actorUserId,
+      note: note || 'Distribution preparation initiated. Configuring creative and placement inventory.',
+    });
+  },
+
+  /**
+   * Launches active live advertising promotion (DISTRIBUTION_PREPARATION -> PROMOTING)
+   */
+  startPromotion: async (id: string, actorUserId: string, note?: string) => {
+    return transitionCampaign({
+      campaignId: id,
+      nextStatus: 'PROMOTING',
+      actorType: 'REVIEWER',
+      actorId: actorUserId,
+      note: note || 'Promotion started. Active message distribution deployed.',
+    });
+  },
+
+  /**
+   * Concludes distribution run and completes campaign (PROMOTING -> COMPLETED)
+   */
+  completeCampaign: async (id: string, actorUserId: string, note?: string) => {
+    return transitionCampaign({
+      campaignId: id,
+      nextStatus: 'COMPLETED',
+      actorType: 'REVIEWER',
+      actorId: actorUserId,
+      note: note || 'Campaign message distribution completed.',
+    });
+  },
+
+  /**
+   * Marks failed advertising delivery (PROMOTING -> FAILED)
+   */
+  failPromotion: async (id: string, reason: string, actorUserId: string) => {
+    return transitionCampaign({
+      campaignId: id,
+      nextStatus: 'FAILED',
+      actorType: 'REVIEWER',
+      actorId: actorUserId,
+      note: reason,
+    });
+  },
 };
+

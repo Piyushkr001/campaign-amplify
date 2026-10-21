@@ -141,6 +141,18 @@ export const submitCampaignSchema = z.object({
     .max(1000000, 'Maximum amplification funding goal is $1,000,000.'),
 });
 
+export const lifecycleNoteSchema = z.object({
+  note: z.string().trim().max(500).optional(),
+});
+
+export const failCampaignSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(3, 'Failure reason must be at least 3 characters.')
+    .max(500, 'Failure reason cannot exceed 500 characters.'),
+});
+
 export type ListCampaignsQuery = z.infer<typeof listCampaignsQuerySchema>;
 export type CampaignIdParam = z.infer<typeof campaignIdParamSchema>;
 export type CreateDraftInput = z.infer<typeof createDraftSchema>;
@@ -149,3 +161,6 @@ export type UpdateStoryInput = z.infer<typeof updateStorySchema>;
 export type UpdateVisualsInput = z.infer<typeof updateVisualsSchema>;
 export type UpdateReachInput = z.infer<typeof updateReachSchema>;
 export type SubmitCampaignInput = z.infer<typeof submitCampaignSchema>;
+export type LifecycleNoteInput = z.infer<typeof lifecycleNoteSchema>;
+export type FailCampaignInput = z.infer<typeof failCampaignSchema>;
+

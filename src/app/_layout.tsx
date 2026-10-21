@@ -7,8 +7,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Palette } from '@/constants/colors';
 
 import { queryClient } from '@/services/query-client';
-
 import { useAuthStore } from '@/store/auth-store';
+import { SessionErrorBanner } from '@/components/ui/SessionErrorBanner';
 
 // Keep the splash screen visible while assets load
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -25,6 +25,7 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
+        <SessionErrorBanner />
         <Stack
           screenOptions={{
             headerShown: false,

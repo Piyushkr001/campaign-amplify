@@ -10,7 +10,11 @@ import {
   updateVisualsSchema,
   updateReachSchema,
   submitCampaignSchema,
+  lifecycleNoteSchema,
+  failCampaignSchema,
 } from './campaign.schemas';
+import { authenticateUser, requireRole } from '../../middleware/auth.middleware';
+import { campaignContributionsRouter } from '../contributions/contribution.routes';
 
 const router = Router();
 
@@ -26,8 +30,6 @@ router.get(
   validateRequest({ params: campaignIdParamSchema }),
   CampaignController.getById
 );
-
-import { authenticateUser } from '../../middleware/auth.middleware';
 
 // Campaign Creation & 5-Step Draft Write Endpoints (Protected by JWT)
 router.post(
@@ -65,8 +67,6 @@ router.patch(
   CampaignController.updateReach
 );
 
-import { campaignContributionsRouter } from '../contributions/contribution.routes';
-
 router.post(
   '/:id/submit',
   authenticateUser,
@@ -74,8 +74,56 @@ router.post(
   CampaignController.submit
 );
 
+// Post-Funding Distribution & Promotion Lifecycle Endpoints (Reviewer / Admin)
+router.post(
+  '/:id/end-funding',
+  authenticateUser,
+  requireRole('REVIEWER', 'ADMIN'),
+  validateRequest({ params: campaignIdParamSchema, body: lifecycleNoteSchema }),
+  CampaignController.endFunding
+);
+
+router.post(
+  '/:id/prepare-distribution',
+  authenticateUser,
+  requireRole('REVIEWER', 'ADMIN'),
+  validateRequest({ params: campaignIdParamSchema, body: lifecycleNoteSchema }),
+  CampaignController.prepareDistribution
+);
+
+router.post(
+  '/:id/start-promotion',
+  authenticateUser,
+  requireRole('REVIEWER', 'ADMIN'),
+  validateRequest({ params: campaignIdParamSchema, body: lifecycleNoteSchema }),
+  CampaignController.startPromotion
+);
+
+router.post(
+  '/:id/complete',
+  authenticateUser,
+  requireRole('REVIEWER', 'ADMIN'),
+  validateRequest({ params: campaignIdParamSchema, body: lifecycleNoteSchema }),
+  CampaignController.complete
+);
+
+router.post(
+  '/:id/fail',
+  authenticateUser,
+  requireRole('REVIEWER', 'ADMIN'),
+  validateRequest({ params: campaignIdParamSchema, body: failCampaignSchema }),
+  CampaignController.fail
+);
+
 // Campaign Contribution Subroutes: /api/v1/campaigns/:id/contributions
 router.use('/:id/contributions', campaignContributionsRouter);
 
+import { reportRouter } from '../reports/report.routes';
+
+// Campaign Reports: /api/v1/campaigns/:id/report
+router.use('/', reportRouter);
+
 export const campaignRouter = router;
+
+
 

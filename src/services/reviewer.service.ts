@@ -10,7 +10,7 @@ import {
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { getEffectiveCampaign } from '@/utils/effective-campaign';
 import { queryClient } from './query-client';
-import { campaignKeys, reviewKeys } from '@/constants/query-keys';
+import { campaignKeys, reviewKeys, activityKeys, reportKeys } from '@/constants/query-keys';
 
 function mapReviewerQueueDtoToCampaign(dto: ReviewerCampaignListApiDTO): Campaign {
   const estimatedReachMin = dto.estimatedReachMin ?? Math.round((dto.fundingGoal || 0) * 0.85 * 20);
@@ -246,5 +246,86 @@ export const ReviewerService = {
     queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
     queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
     queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
+  },
+
+  endFunding: async (id: string, note?: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/campaigns/${id}/end-funding`, { note });
+    } else {
+      useMyCampaignsStore.getState().endFundingPeriod(id);
+    }
+    queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
+  },
+
+  prepareDistribution: async (id: string, note?: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/campaigns/${id}/prepare-distribution`, { note });
+    } else {
+      useMyCampaignsStore.getState().advanceToDistributionPrep(id);
+    }
+    queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
+  },
+
+  startPromotion: async (id: string, note?: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/campaigns/${id}/start-promotion`, { note });
+    } else {
+      useMyCampaignsStore.getState().launchLivePromotion(id);
+    }
+    queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
+    queryClient.invalidateQueries({ queryKey: reportKeys.all });
+    queryClient.invalidateQueries({ queryKey: reportKeys.detail(id) });
+  },
+
+  completePromotion: async (id: string, note?: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/campaigns/${id}/complete`, { note });
+    } else {
+      useMyCampaignsStore.getState().completeCampaign(id);
+    }
+    queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
+    queryClient.invalidateQueries({ queryKey: reportKeys.all });
+    queryClient.invalidateQueries({ queryKey: reportKeys.detail(id) });
+  },
+
+  failPromotion: async (id: string, reason: string): Promise<void> => {
+    if (Config.useApi) {
+      await apiClient.post(`/campaigns/${id}/fail`, { reason });
+    } else {
+      useMyCampaignsStore.getState().rejectCampaign(id, reason);
+    }
+    queryClient.invalidateQueries({ queryKey: campaignKeys.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.creator.all });
+    queryClient.invalidateQueries({ queryKey: campaignKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+    queryClient.invalidateQueries({ queryKey: reviewKeys.detail(id) });
+    queryClient.invalidateQueries({ queryKey: activityKeys.all });
   },
 };
+

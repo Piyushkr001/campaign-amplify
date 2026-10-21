@@ -46,3 +46,14 @@ export const contributionKeys = {
     ['contributions', 'quote', campaignId, amount] as const,
 };
 
+export const activityKeys = {
+  all: ['activity'] as const,
+  me: (params?: { limit?: number; offset?: number }) => ['activity', 'me', params] as const,
+};
+
+export const reportKeys = {
+  all: ['reports'] as const,
+  detail: (campaignId: string) => ['reports', 'detail', campaignId] as const,
+};
+
+

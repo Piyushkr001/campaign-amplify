@@ -175,4 +175,14 @@ export class ContributionStateConflictError extends AppError {
   }
 }
 
+export class ReportNotAvailableError extends AppError {
+  constructor(
+    message = 'Campaign report is not available yet.',
+    details?: unknown
+  ) {
+    super(message, 400, 'REPORT_NOT_AVAILABLE', details);
+  }
+}
+
+
 
