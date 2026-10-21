@@ -23,7 +23,8 @@
     "test:activity": "bun run test-activity.ts",
     "test:distribution": "bun run test-distribution-lifecycle.ts",
     "test:report": "bun run test-report.ts",
-    "test:all": "bun run test:auth && bun run test:sync && bun run test:lifecycle && bun run test:contribution && bun run test:idempotency && bun run test:terminal-race && bun run test:activity && bun run test:distribution && bun run test:report"
+    "test:ai": "bun run test-ai.ts",
+    "test:all": "bun run test:auth && bun run test:sync && bun run test:lifecycle && bun run test:contribution && bun run test:idempotency && bun run test:terminal-race && bun run test:activity && bun run test:distribution && bun run test:report && bun run test:ai"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

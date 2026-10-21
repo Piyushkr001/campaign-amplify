@@ -33,7 +33,7 @@ async function runDistributionLifecycleTest() {
     const reviewerHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${reviewerToken}` };
 
     // Helper to setup an approved FUNDING campaign directly
-    const createFundingCampaign = async (title: string) => {
+    const createFundingCampaign = async (title: string, amountRaised = 1000, fundingGoal = 1000) => {
       const [c] = await db
         .insert(schema.campaigns)
         .values({
@@ -42,8 +42,8 @@ async function runDistributionLifecycleTest() {
           category: 'Democracy',
           creatorName: 'Lifecycle Test Org',
           summary: 'Testing post-funding distribution transitions.',
-          fundingGoal: 1000,
-          amountRaised: 1000,
+          fundingGoal,
+          amountRaised,
           distributionChannels: ['Meta', 'YouTube', 'Search'],
           durationDays: 30,
           status: 'FUNDING',
@@ -149,8 +149,8 @@ async function runDistributionLifecycleTest() {
     // CAMPAIGN 2: ALTERNATIVE BRANCHES (FUNDING_ENDED & FAILED)
     // ==========================================
     console.log('\n[BRANCH 2] Testing Alternative Branches: FUNDING → FUNDING_ENDED and PROMOTING → FAILED...');
-    campaignId2 = await createFundingCampaign('Expired and Failed Edge Test Campaign');
-    console.log('  Created test campaign 2 in FUNDING status:', campaignId2);
+    campaignId2 = await createFundingCampaign('Expired and Failed Edge Test Campaign', 700, 1000);
+    console.log('  Created test campaign 2 in FUNDING status (underfunded $700/$1000):', campaignId2);
 
     // A. End funding period before goal reached (FUNDING → FUNDING_ENDED)
     console.log('\n[STAGE 7] Reviewer: POST /campaigns/:id/end-funding...');
@@ -227,6 +227,11 @@ async function runDistributionLifecycleTest() {
     for (const cid of [campaignId1, campaignId2]) {
       if (cid) {
         try {
+          const repRows = await db.select().from(schema.campaignReports).where(eq(schema.campaignReports.campaignId, cid));
+          for (const rep of repRows) {
+            await db.delete(schema.campaignChannelResults).where(eq(schema.campaignChannelResults.reportId, rep.id));
+            await db.delete(schema.campaignReports).where(eq(schema.campaignReports.id, rep.id));
+          }
           await db.delete(schema.campaignStatusHistory).where(eq(schema.campaignStatusHistory.campaignId, cid));
           await db.delete(schema.campaigns).where(eq(schema.campaigns.id, cid));
         } catch (err) {

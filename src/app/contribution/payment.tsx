@@ -26,7 +26,7 @@ import { useCampaignFundingStore } from '@/store/campaign-funding-store';
 import { useCampaignRuntimeStore } from '@/store/campaign-runtime-store';
 import { useMyCampaignsStore } from '@/store/my-campaigns-store';
 import { queryClient } from '@/services/query-client';
-import { campaignKeys, contributionKeys } from '@/constants/query-keys';
+import { campaignKeys, contributionKeys, activityKeys } from '@/constants/query-keys';
 import { formatCurrency } from '@/utils/formatters';
 import { calculateUseOfFunds, estimateDirectReach } from '@/utils/reach';
 import { Config } from '@/constants/config';
@@ -200,6 +200,7 @@ export default function SimulatedPaymentScreen() {
         queryClient.invalidateQueries({ queryKey: contributionKeys.me() });
         queryClient.invalidateQueries({ queryKey: contributionKeys.detail(activeContribId) });
         queryClient.invalidateQueries({ queryKey: contributionKeys.receipt(activeContribId) });
+        queryClient.invalidateQueries({ queryKey: activityKeys.all });
 
         if (simulateOutcome === 'SUCCESS') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});

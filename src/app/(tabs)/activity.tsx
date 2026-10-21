@@ -243,7 +243,7 @@ export default function ActivityScreen() {
   });
 
   const backedCount = Config.useApi
-    ? apiEvents.filter((e) => e.type === 'CONTRIBUTION_CONFIRMED' || Boolean(e.contributionId)).length
+    ? apiEvents.filter((e) => e.type === 'CONTRIBUTION_CONFIRMED').length
     : successfulContributions.length;
 
   return (
@@ -356,7 +356,7 @@ export default function ActivityScreen() {
                 ) : null}
 
                 <View style={styles.cardActions}>
-                  {evt.contributionId ? (
+                  {evt.contributionId && evt.type === 'CONTRIBUTION_CONFIRMED' ? (
                     <Pressable
                       onPress={() =>
                         router.push({

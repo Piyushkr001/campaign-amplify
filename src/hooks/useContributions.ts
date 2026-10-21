@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { contributionKeys, campaignKeys } from '@/constants/query-keys';
+import { contributionKeys, campaignKeys, activityKeys } from '@/constants/query-keys';
 import { ContributionService } from '@/services/contribution.service';
 import { SimulatePaymentApiInput } from '@/types/contribution-api';
 
@@ -58,6 +58,9 @@ export function useSimulatePayment() {
         queryClient.invalidateQueries({ queryKey: contributionKeys.detail(data.contributionId) });
         queryClient.invalidateQueries({ queryKey: contributionKeys.receipt(data.contributionId) });
       }
+
+      // Invalidate activity query so real-time timeline updates immediately
+      queryClient.invalidateQueries({ queryKey: activityKeys.all });
     },
   });
 }

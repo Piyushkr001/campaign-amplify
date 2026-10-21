@@ -54,6 +54,7 @@ export interface MyCampaignsStore {
   advanceToDistributionPrep: (id: string, note?: string) => TransitionResult;
   launchLivePromotion: (id: string, note?: string) => TransitionResult;
   completeCampaign: (id: string, note?: string) => TransitionResult;
+  failCampaign: (id: string, reason: string) => TransitionResult;
   endFundingPeriod: (id: string, note?: string) => TransitionResult;
 }
 
@@ -394,7 +395,7 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
       launchLivePromotion: (id, note) => {
         return get().transitionCampaign(id, 'PROMOTING', {
           actor: 'REVIEWER',
-          note: note || 'Advertising campaigns deployed to live digital channels.',
+          note: note || 'Promotion simulation active across target channels.',
         });
       },
 
@@ -402,6 +403,13 @@ export const useMyCampaignsStore = create<MyCampaignsStore>()(
         return get().transitionCampaign(id, 'COMPLETED', {
           actor: 'REVIEWER',
           note: note || 'Distribution cycle concluded and final impact metrics generated.',
+        });
+      },
+
+      failCampaign: (id, reason) => {
+        return get().transitionCampaign(id, 'FAILED', {
+          actor: 'REVIEWER',
+          note: reason || 'Distribution promotion failed.',
         });
       },
 

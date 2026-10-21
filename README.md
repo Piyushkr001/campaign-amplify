@@ -427,12 +427,57 @@ bun run test:report
 ```
 Validates availability guards (rejects `DRAFT` with 400), deterministic simulation generation, mathematical budget consistency (85% ad allocation, spend ≤ allocation), channel consistency matching targeting, and Neon PostgreSQL persistence in `campaign_reports` and `campaign_channel_results`.
 
-### 10. Run All Test Suites
+### 10. AI-Assisted Campaign Drafting Suite
+```bash
+cd server
+bun run test:ai
+```
+Validates authentication requirement on AI endpoints (401 without Bearer token), input bounds validation, summary generation (20–240 chars), story narrative generation (headline, intro, story, CTA), ad creative generation (headline ≤ 60, description ≤ 150, CTA ≤ 25), audience and channel suggestions, and per-user rate limiting (429 RATE_LIMIT_EXCEEDED).
+
+### 11. Run All Test Suites
 ```bash
 cd server
 bun run test:all
 ```
-Executes all 9 integration suites sequentially against live Neon PostgreSQL.
+Executes all 10 integration suites sequentially against live Neon PostgreSQL:
+1. `test:auth` (Authentication & RBAC guards)
+2. `test:sync` (Campaign sync & step persistence)
+3. `test:lifecycle` (Reviewer editorial workflow)
+4. `test:contribution` (Contributions & payment quotes)
+5. `test:idempotency` (Financial idempotency & duplicate-funding defense)
+6. `test:terminal-race` (Concurrent SUCCESS vs CANCELLED terminal races)
+7. `test:activity` (Activity stream & actor data isolation)
+8. `test:distribution` (Post-funding distribution & promotion lifecycle)
+9. `test:report` (Campaign reporting & deterministic simulation)
+10. `test:ai` (AI drafting engine, validation, and rate limiting)
+
+---
+
+## 🤖 AI-Assisted Campaign Drafting Engine
+
+The AI drafting system (`server/src/modules/ai/`) provides assistive, non-authoritative drafting assistance to campaign creators.
+
+### Architectural Invariants & Safety Guardrails:
+1. **Creator Sovereignty**: AI suggestions are strictly assistive. AI **never** directly updates database drafts, advances campaign status, approves, publishes, or submits campaigns. All suggestions must be explicitly previewed, accepted, or edited by the creator in the mobile app.
+2. **100% Functional Manual Flow**: The creation wizard remains completely operational without touching AI. If AI is skipped or unavailable, manual entry continues uninterrupted.
+3. **Strict Bounds & Anti-Hallucination**:
+   - Summary: 20–240 characters.
+   - Story: Headline (5–100), Intro (20–500), Narrative (100–5000), CTA (5–100).
+   - Ad Creative: Headline (5–60), Body (10–150), CTA (2–25).
+   - Audience: Demographic context (20–300), Interests (1–10 items), Suggested Channels (subset of supported platforms).
+   - Anti-hallucination prompts strictly forbid fake sources, fabricated quotes, or unverified claims.
+4. **Pluggable Provider with Deterministic Fallback**:
+   - If `AI_API_KEY` is provided, live LLM generation (Google Gemini / OpenAI) is utilized.
+   - If `AI_API_KEY` is absent or external quotas are reached, high-quality deterministic draft generators guarantee zero test breaks and full offline / local mode support.
+5. **Rate Limiting & Defense-in-Depth**:
+   - In-memory sliding window enforces 30 requests/minute per authenticated user (`RATE_LIMIT_EXCEEDED`, HTTP 429).
+   - Input sanitization strips dangerous control characters and enforces length limits before processing.
+
+### Endpoints:
+- `POST /api/v1/ai/campaign/summary` (or `/ai/summary`)
+- `POST /api/v1/ai/campaign/story` (or `/ai/story`)
+- `POST /api/v1/ai/campaign/ad-creative` (or `/ai/ad-creative`)
+- `POST /api/v1/ai/campaign/audience` (or `/ai/audience`)
 
 ---
 
@@ -510,7 +555,8 @@ Campaign Reports (`server/src/modules/reports/`) are persisted in Neon PostgreSQ
 bun expo start                        # Start Metro bundler
 bunx tsc --noEmit                     # Mobile TypeScript check (100% clean)
 cd server && bun run typecheck        # Server TypeScript check (100% clean)
-cd server && bun run test:all         # Run all 9 integration test suites
+cd server && bun run test:all         # Run all 10 integration test suites
+cd server && bun run test:ai          # Run AI drafting integration test
 cd server && bun run test:auth        # Run auth & RBAC integration test
 cd server && bun run test:terminal-race # Run SUCCESS vs CANCELLED race test
 cd server && bun run test:idempotency # Run financial idempotency test

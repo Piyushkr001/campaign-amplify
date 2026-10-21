@@ -9,6 +9,7 @@ import { myContributionsRouter } from './modules/contributions/contribution.rout
 import { paymentsRouter } from './modules/payments/payment.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { activityRouter } from './modules/activity/activity.routes';
+import { aiRouter } from './modules/ai/ai.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { notFoundHandler } from './middleware/not-found.middleware';
 import { apiSuccess } from './utils/response';
@@ -77,6 +78,7 @@ export function createApp(): Express {
   app.use('/api/v1/me/contributions', myContributionsRouter);
   app.use('/api/v1/payments', paymentsRouter);
   app.use('/api/v1/me/activity', activityRouter);
+  app.use('/api/v1/ai', aiRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

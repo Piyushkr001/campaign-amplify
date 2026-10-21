@@ -1,4 +1,4 @@
-import { eq, inArray, desc } from 'drizzle-orm';
+import { eq, inArray, desc, and } from 'drizzle-orm';
 import { getDb, schema } from '../../db/index';
 import { env } from '../../config/env';
 import { ActivityEventDTO, ActivityEventType, ActivityFeedResponseDTO } from './activity.types';
@@ -192,12 +192,13 @@ export const ActivityRepository = {
         })
         .from(schema.payments)
         .where(
-          eq(schema.payments.status, 'FAILED' as any)
+          and(
+            eq(schema.payments.status, 'FAILED' as any),
+            inArray(schema.payments.contributionId, contributionIds as any)
+          )
         );
 
-      failedPayments
-        .filter((p) => contributionIds.includes(p.contributionId))
-        .forEach((p) => {
+      failedPayments.forEach((p) => {
           const contrib = userContributions.find((c) => c.id === p.contributionId);
           const eventId = `payment-fail-${p.id}`;
           eventMap.set(eventId, {

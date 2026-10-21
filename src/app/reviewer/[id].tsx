@@ -266,18 +266,18 @@ export default function ReviewerDetailScreen() {
 
   const handleLaunchPromotion = () => {
     Alert.alert(
-      Config.useApi ? 'Launch Live Advertising' : 'Launch Live Advertising (Demo)',
-      'This transitions the campaign to PROMOTING, activating message delivery across selected channels.',
+      Config.useApi ? 'Start Demo Promotion' : 'Start Demo Promotion (Local)',
+      'This transitions the campaign to PROMOTING, beginning prototype distribution simulation across selected channels.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Launch Promotion',
+          text: 'Start Promotion',
           onPress: async () => {
             try {
               await ReviewerService.startPromotion(campaign.id);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
             } catch (err: any) {
-              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to launch promotion.');
+              Alert.alert('Action Failed', err?.response?.data?.message || err?.message || 'Failed to start promotion.');
             }
           },
         },
@@ -480,11 +480,11 @@ export default function ReviewerDetailScreen() {
             <View style={styles.approvedNotice}>
               <Ionicons name="construct-outline" size={18} color={Palette.purple700} />
               <Text style={styles.approvedNoticeText}>
-                Distribution accounts staged. Deploy creative to live advertising networks.
+                Distribution slots staged. Begin simulated promotion across target channels.
               </Text>
             </View>
             <AppButton
-              title={Config.useApi ? "Launch Live Promotion" : "Demo: Launch Live Promotion"}
+              title={Config.useApi ? "Start Demo Promotion" : "Demo: Start Promotion"}
               onPress={handleLaunchPromotion}
               variant="primary"
               size="md"
@@ -498,9 +498,9 @@ export default function ReviewerDetailScreen() {
             <View style={styles.statusCalloutSuccess}>
               <Ionicons name="radio-outline" size={18} color={Palette.purple700} />
               <View style={styles.statusCalloutTextWrap}>
-                <Text style={styles.statusCalloutTitle}>Active Live Distribution</Text>
+                <Text style={styles.statusCalloutTitle}>Promotion Simulation Active</Text>
                 <Text style={styles.statusCalloutDesc}>
-                  Impressions actively delivering across configured channels.
+                  Prototype distribution modeled across selected channels.
                 </Text>
               </View>
             </View>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +21,9 @@ import { useCampaignDraftStore } from '@/store/campaign-draft-store';
 import { CampaignReachSchema } from '@/schemas/campaign.schema';
 import { Config } from '@/constants/config';
 import { CampaignService } from '@/services/campaign.service';
+import { AIAssistModal } from '@/components/create/AIAssistModal';
+import { AIService } from '@/services/ai.service';
+import { GenerateAudienceResponse } from '@/types/ai-api';
 
 const PRESET_LOCATIONS = ['India', 'Delhi NCR', 'Uttar Pradesh', 'Mumbai', 'Bengaluru', 'Global'];
 const PRESET_INTERESTS = [
@@ -70,6 +74,68 @@ export default function CreateReachScreen() {
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
+
+  // AI Assist State
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [suggestedAudienceData, setSuggestedAudienceData] = useState<GenerateAudienceResponse | null>(null);
+
+  const handleOpenAiAudience = async () => {
+    if (!draft.title || draft.title.trim().length < 5) {
+      Alert.alert(
+        'Campaign Title Required',
+        'Please complete your campaign title on Step 1 (Basics) first to guide audience targeting suggestions.'
+      );
+      return;
+    }
+
+    setAiModalVisible(true);
+    setAiLoading(true);
+    setAiError(null);
+    setSuggestedAudienceData(null);
+
+    try {
+      const result = await AIService.generateAudience({
+        title: draft.title,
+        category: draft.category || 'Environment',
+        summary: draft.summary,
+      });
+      setSuggestedAudienceData(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Failed to generate audience suggestions. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleApplyAiAudience = () => {
+    if (suggestedAudienceData) {
+      setAudienceDescription(suggestedAudienceData.audienceDescription);
+
+      // Merge interests
+      const combinedInterests = Array.from(
+        new Set([...interests, ...suggestedAudienceData.interests])
+      );
+      setInterests(combinedInterests);
+
+      // Merge channels
+      const combinedChannels = Array.from(
+        new Set([...channels, ...suggestedAudienceData.suggestedChannels])
+      );
+      setChannels(combinedChannels);
+
+      updateFields({
+        audienceDescription: suggestedAudienceData.audienceDescription,
+        interests: combinedInterests,
+        channels: combinedChannels,
+      });
+
+      setErrors({});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
 
   // Sync draft rehydration from AsyncStorage
   useEffect(() => {
@@ -432,7 +498,17 @@ export default function CreateReachScreen() {
       <View style={styles.sectionCard}>
         <View style={styles.fieldHeaderRow}>
           <Text style={styles.fieldLabel}>Intended Audience Context *</Text>
-          <Text style={styles.charCounter}>{audienceDescription.length} / 300</Text>
+          <View style={styles.audienceHeaderRight}>
+            <Pressable
+              onPress={handleOpenAiAudience}
+              style={({ pressed }) => [styles.aiAssistBtn, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Suggest Audience">
+              <Ionicons name="sparkles" size={12} color={Palette.primary700} />
+              <Text style={styles.aiAssistBtnText}>Suggest Audience</Text>
+            </Pressable>
+            <Text style={styles.charCounter}>{audienceDescription.length} / 300</Text>
+          </View>
         </View>
         <AppInput
           placeholder="e.g. Regional educators, public health workers, civic advocates, and local policy researchers..."
@@ -497,6 +573,58 @@ export default function CreateReachScreen() {
           iconPosition="right"
         />
       </View>
+
+      <AIAssistModal
+        visible={aiModalVisible}
+        title="AI Audience Suggestions"
+        subtitle="Recommended audience profile, interests, and distribution channels"
+        isLoading={aiLoading}
+        error={aiError}
+        onClose={() => setAiModalVisible(false)}
+        onApply={handleApplyAiAudience}
+        applyLabel="Apply Suggestions">
+        {suggestedAudienceData && (
+          <View style={styles.aiAudienceContainer}>
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Audience Profile Context</Text>
+              <Text style={styles.aiDescriptionText}>{suggestedAudienceData.audienceDescription}</Text>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Recommended Interests</Text>
+              <View style={styles.chipsPreviewRow}>
+                {suggestedAudienceData.interests.map((interest, idx) => (
+                  <View key={idx} style={styles.aiChip}>
+                    <Ionicons name="pricetag-outline" size={11} color={Palette.primary700} />
+                    <Text style={styles.aiChipText}>{interest}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Recommended Channels</Text>
+              <View style={styles.chipsPreviewRow}>
+                {suggestedAudienceData.suggestedChannels.map((ch, idx) => (
+                  <View key={idx} style={styles.aiChannelChip}>
+                    <Ionicons name="radio-outline" size={11} color={Palette.primary700} />
+                    <Text style={styles.aiChannelChipText}>{ch}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {suggestedAudienceData.geographicFocus ? (
+              <View style={styles.aiGeoBox}>
+                <Ionicons name="globe-outline" size={14} color={Palette.neutral600} />
+                <Text style={styles.aiGeoText}>
+                  Scope: {suggestedAudienceData.geographicFocus}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </AIAssistModal>
     </ScreenContainer>
   );
 }
@@ -770,5 +898,100 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     marginBottom: Spacing.xxl,
+  },
+  audienceHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  aiAssistBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  aiAssistBtnText: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.primary700,
+  },
+  aiAudienceContainer: {
+    gap: Spacing.md,
+  },
+  aiFieldGroup: {
+    backgroundColor: Palette.neutral50,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+  },
+  aiFieldLabel: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.neutral500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  aiDescriptionText: {
+    ...Typography.bodySmall,
+    color: Palette.navy950,
+    lineHeight: 20,
+  },
+  chipsPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  aiChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary50,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+  },
+  aiChipText: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.primary800,
+  },
+  aiChannelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary50,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+  },
+  aiChannelChipText: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.primary800,
+  },
+  aiGeoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+  },
+  aiGeoText: {
+    ...Typography.caption,
+    color: Palette.neutral600,
   },
 });

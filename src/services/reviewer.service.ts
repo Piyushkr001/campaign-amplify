@@ -317,7 +317,7 @@ export const ReviewerService = {
     if (Config.useApi) {
       await apiClient.post(`/campaigns/${id}/fail`, { reason });
     } else {
-      useMyCampaignsStore.getState().rejectCampaign(id, reason);
+      useMyCampaignsStore.getState().failCampaign(id, reason);
     }
     queryClient.invalidateQueries({ queryKey: campaignKeys.all });
     queryClient.invalidateQueries({ queryKey: campaignKeys.public.all });

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,9 @@ import { CampaignVisualsSchema } from '@/schemas/campaign.schema';
 import { Config } from '@/constants/config';
 import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
+import { AIAssistModal } from '@/components/create/AIAssistModal';
+import { AIService } from '@/services/ai.service';
+import { GenerateAdCreativeResponse } from '@/types/ai-api';
 
 const CTA_OPTIONS = ['Learn More', 'Read Report', 'Support Message', 'Take Action', 'View Findings'];
 
@@ -50,6 +54,58 @@ export default function CreateVisualsScreen() {
   const [adCTA, setAdCTA] = useState(draft.adCTA || 'Learn More');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
+
+  // AI Assist State
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [suggestedAdData, setSuggestedAdData] = useState<GenerateAdCreativeResponse | null>(null);
+
+  const handleOpenAiCreative = async () => {
+    if (!draft.title || draft.title.trim().length < 5) {
+      Alert.alert(
+        'Campaign Title Required',
+        'Please complete your campaign title on Step 1 (Basics) first to guide ad creative drafting.'
+      );
+      return;
+    }
+
+    setAiModalVisible(true);
+    setAiLoading(true);
+    setAiError(null);
+    setSuggestedAdData(null);
+
+    try {
+      const result = await AIService.generateAdCreative({
+        title: draft.title,
+        summary: draft.summary,
+        platform: 'Meta',
+      });
+      setSuggestedAdData(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Failed to generate ad creative suggestion. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleApplyAiCreative = () => {
+    if (suggestedAdData) {
+      setAdHeadline(suggestedAdData.headline);
+      setAdDescription(suggestedAdData.description);
+      if (suggestedAdData.callToAction) {
+        setAdCTA(suggestedAdData.callToAction);
+      }
+      updateFields({
+        adHeadline: suggestedAdData.headline,
+        adDescription: suggestedAdData.description,
+        adCTA: suggestedAdData.callToAction || adCTA,
+      });
+      setErrors({});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
 
   // Sync draft rehydration from AsyncStorage
   useEffect(() => {
@@ -327,7 +383,17 @@ export default function CreateVisualsScreen() {
         {/* Ad Headline */}
         <View style={styles.fieldHeaderRow}>
           <Text style={styles.fieldLabel}>Ad Headline *</Text>
-          <Text style={styles.charCounter}>{adHeadline.length} / 60</Text>
+          <View style={styles.headlineHeaderRight}>
+            <Pressable
+              onPress={handleOpenAiCreative}
+              style={({ pressed }) => [styles.aiAssistBtn, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Suggest Ad Copy">
+              <Ionicons name="sparkles" size={12} color={Palette.primary700} />
+              <Text style={styles.aiAssistBtnText}>Suggest Ad Copy</Text>
+            </Pressable>
+            <Text style={styles.charCounter}>{adHeadline.length} / 60</Text>
+          </View>
         </View>
         <AppInput
           placeholder="e.g. Why Rural Water Infrastructure Needs Urgent Attention"
@@ -428,6 +494,45 @@ export default function CreateVisualsScreen() {
           iconPosition="right"
         />
       </View>
+
+      <AIAssistModal
+        visible={aiModalVisible}
+        title="AI Ad Copy Suggestion"
+        subtitle="Optimized headlines and copy for social distribution feeds"
+        isLoading={aiLoading}
+        error={aiError}
+        onClose={() => setAiModalVisible(false)}
+        onApply={handleApplyAiCreative}
+        applyLabel="Apply Ad Copy">
+        {suggestedAdData && (
+          <View style={styles.aiCreativeContainer}>
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Suggested Ad Headline (60 chars max)</Text>
+              <Text style={styles.aiHeadlineText}>{suggestedAdData.headline}</Text>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Suggested Ad Body (150 chars max)</Text>
+              <Text style={styles.aiDescriptionText}>{suggestedAdData.description}</Text>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Call to Action Button</Text>
+              <Text style={styles.aiCtaBadge}>{suggestedAdData.callToAction}</Text>
+            </View>
+
+            {suggestedAdData.visualConcept ? (
+              <View style={styles.aiConceptBox}>
+                <Ionicons name="bulb-outline" size={16} color={Palette.primary700} />
+                <View style={styles.aiConceptTextCol}>
+                  <Text style={styles.aiConceptTitle}>Visual Direction Concept</Text>
+                  <Text style={styles.aiConceptDesc}>{suggestedAdData.visualConcept}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </AIAssistModal>
     </ScreenContainer>
   );
 }
@@ -631,5 +736,91 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     marginBottom: Spacing.xxl,
+  },
+  headlineHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  aiAssistBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  aiAssistBtnText: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.primary700,
+  },
+  aiCreativeContainer: {
+    gap: Spacing.md,
+  },
+  aiFieldGroup: {
+    backgroundColor: Palette.neutral50,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+  },
+  aiFieldLabel: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.neutral500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  aiHeadlineText: {
+    ...Typography.bodySmall,
+    fontWeight: '700',
+    color: Palette.navy950,
+  },
+  aiDescriptionText: {
+    ...Typography.bodySmall,
+    color: Palette.neutral800,
+    lineHeight: 20,
+  },
+  aiCtaBadge: {
+    ...Typography.caption,
+    fontWeight: '700',
+    color: Palette.success700,
+    alignSelf: 'flex-start',
+    backgroundColor: Palette.success50,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    marginTop: 2,
+  },
+  aiConceptBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
+    backgroundColor: Palette.primary50,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+  },
+  aiConceptTextCol: {
+    flex: 1,
+  },
+  aiConceptTitle: {
+    ...Typography.caption,
+    fontWeight: '700',
+    color: Palette.primary900,
+  },
+  aiConceptDesc: {
+    ...Typography.caption,
+    color: Palette.primary800,
+    lineHeight: 16,
+    marginTop: 2,
   },
 });

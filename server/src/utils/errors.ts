@@ -184,5 +184,14 @@ export class ReportNotAvailableError extends AppError {
   }
 }
 
+export class RateLimitExceededError extends AppError {
+  constructor(
+    message = 'Rate limit exceeded. Please wait a moment before trying again.',
+    details?: unknown
+  ) {
+    super(message, 429, 'RATE_LIMIT_EXCEEDED', details);
+  }
+}
+
 
 

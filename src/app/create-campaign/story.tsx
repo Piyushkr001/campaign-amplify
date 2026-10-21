@@ -24,6 +24,9 @@ import { Config } from '@/constants/config';
 import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
 import { generateId } from '@/utils/id';
+import { AIAssistModal } from '@/components/create/AIAssistModal';
+import { AIService } from '@/services/ai.service';
+import { GenerateStoryResponse } from '@/types/ai-api';
 
 export default function CreateStoryScreen() {
   const router = useRouter();
@@ -58,6 +61,79 @@ export default function CreateStoryScreen() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
+
+  // AI Narrative Assist State
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [suggestedStoryData, setSuggestedStoryData] = useState<GenerateStoryResponse | null>(null);
+
+  const handleOpenAiDraft = async () => {
+    if (!draft.title || draft.title.trim().length < 5) {
+      Alert.alert(
+        'Campaign Title Required',
+        'Please complete the campaign title on Step 1 (Basics) first to guide narrative drafting.'
+      );
+      return;
+    }
+
+    setAiModalVisible(true);
+    setAiLoading(true);
+    setAiError(null);
+    setSuggestedStoryData(null);
+
+    try {
+      const result = await AIService.generateStory({
+        title: draft.title,
+        category: draft.category || 'Environment',
+        summary: draft.summary,
+        tone: 'inspirational',
+      });
+      setSuggestedStoryData(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Failed to generate story draft. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleApplyAllStory = () => {
+    if (suggestedStoryData) {
+      setStoryHeadline(suggestedStoryData.headline);
+      setStoryIntro(suggestedStoryData.intro);
+      setStoryContent(suggestedStoryData.story);
+      if (suggestedStoryData.callToAction) {
+        setSuggestedAction(suggestedStoryData.callToAction);
+      }
+      updateFields({
+        storyHeadline: suggestedStoryData.headline,
+        storyIntro: suggestedStoryData.intro,
+        storyContent: suggestedStoryData.story,
+        suggestedAction: suggestedStoryData.callToAction || suggestedAction,
+      });
+      setErrors({});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
+
+  const handleApplyHeadlineOnly = () => {
+    if (suggestedStoryData) {
+      setStoryHeadline(suggestedStoryData.headline);
+      updateField('storyHeadline', suggestedStoryData.headline);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
+
+  const handleApplyStoryOnly = () => {
+    if (suggestedStoryData) {
+      setStoryContent(suggestedStoryData.story);
+      updateField('storyContent', suggestedStoryData.story);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
 
   // Sync draft rehydration from AsyncStorage
   useEffect(() => {
@@ -302,6 +378,29 @@ export default function CreateStoryScreen() {
 
       {/* Editorial Form */}
       <View style={styles.formSection}>
+        {/* AI Narrative Assist Card */}
+        <View style={styles.aiNarrativeCard}>
+          <View style={styles.aiNarrativeCardLeft}>
+            <View style={styles.aiIconBadge}>
+              <Ionicons name="sparkles" size={14} color={Palette.primary700} />
+            </View>
+            <View style={styles.aiNarrativeCardText}>
+              <Text style={styles.aiNarrativeCardTitle}>AI Narrative Assistant</Text>
+              <Text style={styles.aiNarrativeCardDesc}>
+                Draft structured headline, lead intro, and story from your campaign topic.
+              </Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={handleOpenAiDraft}
+            style={({ pressed }) => [styles.aiDraftBtn, pressed && styles.btnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Draft with AI">
+            <Ionicons name="sparkles" size={12} color={Palette.pureWhite} />
+            <Text style={styles.aiDraftBtnText}>Draft with AI</Text>
+          </Pressable>
+        </View>
+
         {/* Story Headline */}
         <View style={styles.fieldHeaderRow}>
           <Text style={styles.fieldLabel}>Editorial Headline *</Text>
@@ -558,6 +657,58 @@ export default function CreateStoryScreen() {
           iconPosition="right"
         />
       </View>
+
+      <AIAssistModal
+        visible={aiModalVisible}
+        title="AI Narrative Suggestion"
+        subtitle="Review full proposed story or apply specific sections"
+        isLoading={aiLoading}
+        error={aiError}
+        onClose={() => setAiModalVisible(false)}
+        onApply={handleApplyAllStory}
+        applyLabel="Apply All"
+        secondaryActions={
+          suggestedStoryData ? (
+            <View style={styles.granularButtonsRow}>
+              <Pressable
+                onPress={handleApplyHeadlineOnly}
+                style={({ pressed }) => [styles.granularBtn, pressed && styles.btnPressed]}>
+                <Text style={styles.granularBtnText}>Headline Only</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleApplyStoryOnly}
+                style={({ pressed }) => [styles.granularBtn, pressed && styles.btnPressed]}>
+                <Text style={styles.granularBtnText}>Story Only</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }>
+        {suggestedStoryData && (
+          <View style={styles.aiStoryPreviewContainer}>
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Headline</Text>
+              <Text style={styles.aiHeadlineText}>{suggestedStoryData.headline}</Text>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Lead Introduction</Text>
+              <Text style={styles.aiIntroText}>{suggestedStoryData.intro}</Text>
+            </View>
+
+            <View style={styles.aiFieldGroup}>
+              <Text style={styles.aiFieldLabel}>Detailed Narrative</Text>
+              <Text style={styles.aiStoryText}>{suggestedStoryData.story}</Text>
+            </View>
+
+            {suggestedStoryData.callToAction ? (
+              <View style={styles.aiFieldGroup}>
+                <Text style={styles.aiFieldLabel}>Suggested Action / CTA</Text>
+                <Text style={styles.aiCtaText}>{suggestedStoryData.callToAction}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </AIAssistModal>
     </ScreenContainer>
   );
 }
@@ -817,5 +968,116 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     marginBottom: Spacing.xxl,
+  },
+  aiNarrativeCard: {
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  aiNarrativeCardLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  aiIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Palette.pureWhite,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiNarrativeCardText: {
+    flex: 1,
+  },
+  aiNarrativeCardTitle: {
+    ...Typography.bodySmall,
+    fontWeight: '700',
+    color: Palette.navy950,
+  },
+  aiNarrativeCardDesc: {
+    ...Typography.caption,
+    color: Palette.neutral600,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  aiDraftBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary700,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  aiDraftBtnText: {
+    ...Typography.caption,
+    fontWeight: '600',
+    color: Palette.pureWhite,
+  },
+  aiStoryPreviewContainer: {
+    gap: Spacing.md,
+  },
+  aiFieldGroup: {
+    backgroundColor: Palette.neutral50,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+  },
+  aiFieldLabel: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.neutral500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  aiHeadlineText: {
+    ...Typography.bodySmall,
+    fontWeight: '700',
+    color: Palette.navy950,
+  },
+  aiIntroText: {
+    ...Typography.bodySmall,
+    color: Palette.neutral800,
+    lineHeight: 20,
+  },
+  aiStoryText: {
+    ...Typography.body,
+    fontSize: 14,
+    color: Palette.navy950,
+    lineHeight: 22,
+  },
+  aiCtaText: {
+    ...Typography.bodySmall,
+    fontWeight: '600',
+    color: Palette.success700,
+  },
+  granularButtonsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  granularBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xs,
+    backgroundColor: Palette.neutral100,
+    borderRadius: BorderRadius.md,
+  },
+  granularBtnText: {
+    ...Typography.caption,
+    fontWeight: '600',
+    color: Palette.navy900,
   },
 });

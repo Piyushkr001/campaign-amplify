@@ -219,8 +219,8 @@ export function CampaignStatusTimeline({
       },
       {
         key: 'PROMOTING',
-        label: 'Live Promotion',
-        description: 'Advertising campaigns actively distributing to selected audiences.',
+        label: 'Simulated Promotion',
+        description: 'Message amplification simulation running across selected audiences.',
       },
       {
         key: 'COMPLETED',

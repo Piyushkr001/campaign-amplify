@@ -13,6 +13,8 @@ const envSchema = z
     DATABASE_URL: z.string().optional(),
     JWT_SECRET: z.string().optional(),
     JWT_EXPIRES_IN: z.string().default('8h'),
+    AI_API_KEY: z.string().optional(),
+    AI_MODEL: z.string().default('gemini-1.5-flash'),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production') {

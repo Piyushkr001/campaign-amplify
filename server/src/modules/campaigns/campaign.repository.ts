@@ -28,6 +28,7 @@ import {
 import { canEditCampaign, canSubmitCampaign } from './campaign.lifecycle';
 import { transitionCampaign } from './campaign.transition';
 import { CAMPAIGN_POLICY } from '../../config/campaign-policy';
+import { ReportRepository } from '../reports/report.repository';
 
 // Seed fallback data for when DATABASE_URL is completely unset locally
 const FALLBACK_PUBLIC_CAMPAIGNS: CampaignDetailDTO[] = [
@@ -981,26 +982,42 @@ export const CampaignRepository = {
    * Launches active live advertising promotion (DISTRIBUTION_PREPARATION -> PROMOTING)
    */
   startPromotion: async (id: string, actorUserId: string, note?: string) => {
-    return transitionCampaign({
+    const updated = await transitionCampaign({
       campaignId: id,
       nextStatus: 'PROMOTING',
       actorType: 'REVIEWER',
       actorId: actorUserId,
-      note: note || 'Promotion started. Active message distribution deployed.',
+      note: note || 'Promotion started. Message distribution simulation active.',
     });
+
+    try {
+      await ReportRepository.upsertReportForCampaign(id);
+    } catch (err) {
+      console.warn(`[Report] Failed to generate interim report on startPromotion for ${id}:`, err);
+    }
+
+    return updated;
   },
 
   /**
    * Concludes distribution run and completes campaign (PROMOTING -> COMPLETED)
    */
   completeCampaign: async (id: string, actorUserId: string, note?: string) => {
-    return transitionCampaign({
+    const updated = await transitionCampaign({
       campaignId: id,
       nextStatus: 'COMPLETED',
       actorType: 'REVIEWER',
       actorId: actorUserId,
       note: note || 'Campaign message distribution completed.',
     });
+
+    try {
+      await ReportRepository.upsertReportForCampaign(id);
+    } catch (err) {
+      console.warn(`[Report] Failed to generate final report on completeCampaign for ${id}:`, err);
+    }
+
+    return updated;
   },
 
   /**

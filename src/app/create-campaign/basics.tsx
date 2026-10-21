@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +26,9 @@ import { useAuthStore } from '@/store/auth-store';
 import { Config } from '@/constants/config';
 import { CampaignService } from '@/services/campaign.service';
 import { pickImageFromLibrary } from '@/utils/image-picker';
+import { AIAssistModal } from '@/components/create/AIAssistModal';
+import { AIService } from '@/services/ai.service';
+import { GenerateSummaryResponse } from '@/types/ai-api';
 
 const SAMPLE_COVERS = [
   'https://images.unsplash.com/photo-1541252260730-0412e8e2108e?auto=format&fit=crop&w=800&q=80',
@@ -78,6 +82,50 @@ export default function CreateBasicsScreen() {
   const [coverImage, setCoverImage] = useState<string | undefined>(draft.coverImage);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveBannerText, setSaveBannerText] = useState<string | null>(null);
+
+  // AI Assist State
+  const [aiModalVisible, setAiModalVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [suggestedSummaryData, setSuggestedSummaryData] = useState<GenerateSummaryResponse | null>(null);
+
+  const handleOpenAiAssist = async () => {
+    if (!title.trim() || title.trim().length < 5) {
+      Alert.alert(
+        'Campaign Title Required',
+        'Please enter a title of at least 5 characters first so the AI can draft a relevant summary.'
+      );
+      return;
+    }
+
+    setAiModalVisible(true);
+    setAiLoading(true);
+    setAiError(null);
+    setSuggestedSummaryData(null);
+
+    try {
+      const result = await AIService.generateSummary({
+        title: title.trim(),
+        category,
+        tone: 'inspirational',
+      });
+      setSuggestedSummaryData(result);
+    } catch (err: any) {
+      setAiError(err?.message || 'Failed to generate summary suggestion. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleApplyAiSummary = () => {
+    if (suggestedSummaryData) {
+      setSummary(suggestedSummaryData.summary);
+      updateField('summary', suggestedSummaryData.summary);
+      if (errors.summary) setErrors((prev) => ({ ...prev, summary: '' }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setAiModalVisible(false);
+  };
 
   // Sync draft once rehydrated from AsyncStorage
   useEffect(() => {
@@ -326,7 +374,17 @@ export default function CreateBasicsScreen() {
         {/* Short Summary */}
         <View style={styles.fieldHeaderRow}>
           <Text style={styles.fieldLabel}>Short Summary *</Text>
-          <Text style={styles.charCounter}>{summary.length} / 240</Text>
+          <View style={styles.summaryHeaderRight}>
+            <Pressable
+              onPress={handleOpenAiAssist}
+              style={({ pressed }) => [styles.aiAssistBtn, pressed && styles.btnPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="AI Summary Assist">
+              <Ionicons name="sparkles" size={12} color={Palette.primary700} />
+              <Text style={styles.aiAssistBtnText}>AI Assist</Text>
+            </Pressable>
+            <Text style={styles.charCounter}>{summary.length} / 240</Text>
+          </View>
         </View>
         <AppInput
           placeholder="Summarize the message essence and why broader audiences must hear it..."
@@ -411,6 +469,36 @@ export default function CreateBasicsScreen() {
           iconPosition="right"
         />
       </View>
+
+      <AIAssistModal
+        visible={aiModalVisible}
+        title="AI Summary Draft"
+        subtitle="Review and refine your campaign summary"
+        isLoading={aiLoading}
+        error={aiError}
+        onClose={() => setAiModalVisible(false)}
+        onApply={handleApplyAiSummary}
+        applyLabel="Use Summary">
+        {suggestedSummaryData && (
+          <View style={styles.aiPreviewBox}>
+            <Text style={styles.aiPreviewLabel}>Proposed Summary</Text>
+            <Text style={styles.aiPreviewText}>{suggestedSummaryData.summary}</Text>
+
+            {suggestedSummaryData.keywords && suggestedSummaryData.keywords.length > 0 && (
+              <View style={styles.aiKeywordsRow}>
+                <Text style={styles.aiKeywordsLabel}>Suggested Keywords:</Text>
+                <View style={styles.keywordChipsContainer}>
+                  {suggestedSummaryData.keywords.map((kw, i) => (
+                    <View key={i} style={styles.keywordChip}>
+                      <Text style={styles.keywordChipText}>{kw}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+      </AIAssistModal>
     </ScreenContainer>
   );
 }
@@ -602,5 +690,79 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     marginBottom: Spacing.xxl,
+  },
+  summaryHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  aiAssistBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Palette.primary50,
+    borderWidth: 1,
+    borderColor: Palette.primary200,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  aiAssistBtnText: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '600',
+    color: Palette.primary700,
+  },
+  aiPreviewBox: {
+    backgroundColor: Palette.neutral50,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Palette.neutral200,
+  },
+  aiPreviewLabel: {
+    ...Typography.caption,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Palette.neutral500,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.xs,
+  },
+  aiPreviewText: {
+    ...Typography.body,
+    fontSize: 14,
+    color: Palette.navy950,
+    lineHeight: 22,
+  },
+  aiKeywordsRow: {
+    marginTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Palette.neutral200,
+    paddingTop: Spacing.sm,
+  },
+  aiKeywordsLabel: {
+    ...Typography.caption,
+    fontWeight: '600',
+    color: Palette.neutral600,
+    marginBottom: Spacing.xs,
+  },
+  keywordChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  keywordChip: {
+    backgroundColor: Palette.pureWhite,
+    borderWidth: 1,
+    borderColor: Palette.neutral300,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  keywordChipText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Palette.neutral700,
   },
 });

@@ -117,8 +117,8 @@ export const CAMPAIGN_STATUS_CONFIG: Record<CampaignStatus, CampaignStatusConfig
   },
   PROMOTING: {
     label: 'Promoting',
-    creatorDescription: 'Live advertising distribution actively running across target channels.',
-    publicDescription: 'Campaign promotion is currently active.',
+    creatorDescription: 'Promotion simulation active across target channels.',
+    publicDescription: 'Campaign promotion simulation is currently active.',
     badgeVariant: 'purple',
     creatorAction: 'View Progress',
     isPublic: true,
